@@ -1582,11 +1582,13 @@ void drawHomeGridCard(int item) {
     const auto system = static_cast<System>(item);
     const auto &info = systemInfo(system);
     drawHomeConsoleIcon(system, center, y + 2, accent);
-    drawCenteredText(center, y + kHomeCardTitleY, info.cardTitle, fg, bg);
-    if (*info.cardSubtitle) drawCenteredText(center, y + kHomeCardTitleY + 8, info.cardSubtitle, fg, bg);
+    Screen::compactLabel(center, y + kHomeCardTitleY, info.cardTitle, fg, bg);
+    if (*info.cardSubtitle) {
+      Screen::compactLabel(center, y + kHomeCardTitleY + 8, info.cardSubtitle, fg, bg);
+    }
   } else {
     drawHomeAppIcon(item, center - 13, y + 6, accent, bg);
-    drawCenteredText(center, y + kHomeCardTitleY, kHomeApps[item - kMusicMenuItem].title, fg, bg);
+    Screen::compactLabel(center, y + kHomeCardTitleY, kHomeApps[item - kMusicMenuItem].title, fg, bg);
   }
   if (item == kMusicMenuItem && homeHasMusicTitle()) {
     drawHomeMusicTitle(true);

@@ -45,6 +45,8 @@ uint32_t clockHz();
 void fill(int x, int y, int w, int h, uint16_t color);
 // Draw text using the 8 by 8 font, an explicit background, and an integer scale.
 void text(int x, int y, const char *value, uint16_t fg, uint16_t bg, int scale = 1);
+// Draw a centered 5 by 7 label for Home cards. Supports uppercase letters, spaces, and periods.
+void compactLabel(int centerX, int y, const char *value, uint16_t fg, uint16_t bg);
 // Draw a one-row viewport of width w with a horizontal pixel offset.
 void marqueeText(int x, int y, int w, const char *value, int offset, uint16_t fg, uint16_t bg);
 // Transfer a contiguous RGB565 rectangle to the screen.
