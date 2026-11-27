@@ -11,8 +11,8 @@ Pocket Play is a DIY handheld by Moutaz Baaj. It plays Game Boy, Game Boy Color,
 
 If your Pocket Play already offers a firmware updater, download `PocketPlay.ino.bin`. For a blank board, a board without compatible update slots, or recovery, use the USB image in the firmware ZIP. [Downloads](README.md#downloads) · [Wi-Fi update](#update-firmware-over-wi-fi) · [microSD update](#update-firmware-from-microsd)
 
-1. If a release provides a USB package for your hardware, follow its flashing instructions. To build from source, download a release's source ZIP or use **Code → Download ZIP** on the repository. [GitHub Releases](https://github.com/Moutazbaaj/Pocket-Play/releases) · [USB package and recovery](BUILDING.md#package-firmware-for-usb-and-wi-fi)
-2. To install from source, extract the ZIP, rename the sketch folder to `PocketPlay`, and open `PocketPlay.ino` in Arduino IDE.
+1. If a release provides a USB package for your hardware, follow its flashing instructions. To build from source, download `PocketPlay-source.zip` from the release or use **Code → Download ZIP** on the repository. [GitHub Releases](https://github.com/Moutazbaaj/Pocket-Play/releases) · [USB package and recovery](BUILDING.md#package-firmware-for-usb-and-wi-fi)
+2. To install from source, extract the ZIP, name the sketch folder `PocketPlay` if needed, and open `PocketPlay.ino` in Arduino IDE.
 3. In **Boards Manager**, select **esp32 by Espressif Systems** and install **3.3.2**, the version used for the current reference build and its Wi-Fi Transfer. Use this same board package version on each computer you build from. [Espressif 3.3.2 release](https://github.com/espressif/arduino-esp32/releases/tag/3.3.2)
 4. For the reference **ESP32-S3-WROOM-1-N16R8** board, select **ESP32S3 Dev Module**, **16 MB flash**, **OPI PSRAM**, and the partition scheme **16M Flash (3MB APP/9.9MB FATFS)**. [Full board settings](BUILDING.md#build-and-upload) · [Wiring](docs/HARDWARE.md)
 5. Connect the handheld through its USB-to-UART port, choose that serial port, and click **Verify**, then **Upload**. The startup log should show **16 MiB flash** and **8 MiB PSRAM** at **115200 baud**.

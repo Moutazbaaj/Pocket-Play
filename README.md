@@ -12,8 +12,8 @@ Open the [latest release](https://github.com/Moutazbaaj/Pocket-Play/releases/lat
 | --- | --- |
 | [PocketPlay.ino.bin](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/PocketPlay.ino.bin) | Updating an existing Pocket Play over Wi-Fi or from microSD. |
 | [PocketPlay-firmware.zip](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/PocketPlay-firmware.zip) | A firmware bundle with the update image, USB first-install and recovery image, and instructions. |
-| [SHA256SUMS.txt](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/SHA256SUMS.txt) | Verifying the direct download or the firmware ZIP. |
-| **Source code (zip)** under Assets | Building the tagged source in Arduino IDE. Extract it to a folder named `PocketPlay`. |
+| [PocketPlay-source.zip](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/PocketPlay-source.zip) | Building the matching source in Arduino IDE. Extract it and open `PocketPlay/PocketPlay.ino`. |
+| [SHA256SUMS.txt](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/SHA256SUMS.txt) | Verifying the update image, firmware ZIP, or source ZIP. |
 
 ## Get started
 

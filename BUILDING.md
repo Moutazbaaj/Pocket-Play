@@ -4,7 +4,7 @@
 
 ## Build and upload
 
-Clone the repository into an Arduino sketch folder named `PocketPlay`. If you downloaded a source ZIP, extract it and rename the extracted folder to `PocketPlay`.
+Clone the repository into an Arduino sketch folder named `PocketPlay`. If you downloaded `PocketPlay-source.zip` from a release, extract the included `PocketPlay` folder. For a GitHub-generated source ZIP, rename the extracted folder to `PocketPlay`.
 
 ```sh
 git clone https://github.com/Moutazbaaj/Pocket-Play.git PocketPlay
