@@ -9,7 +9,7 @@ Pocket Play is a DIY handheld by Moutaz Baaj. It plays Game Boy, Game Boy Color,
 
 ## Download and install
 
-If your Pocket Play already offers a firmware updater, use the app download ending in `.ino.bin`. For a blank board, a board without compatible update slots, or recovery, use USB. [Wi-Fi update](#update-firmware-over-wi-fi) · [microSD update](#update-firmware-from-microsd)
+If your Pocket Play already offers a firmware updater, download `PocketPlay.ino.bin`. For a blank board, a board without compatible update slots, or recovery, use the USB image in the firmware ZIP. [Downloads](README.md#downloads) · [Wi-Fi update](#update-firmware-over-wi-fi) · [microSD update](#update-firmware-from-microsd)
 
 1. If a release provides a USB package for your hardware, follow its flashing instructions. To build from source, download a release's source ZIP or use **Code → Download ZIP** on the repository. [GitHub Releases](https://github.com/Moutazbaaj/Pocket-Play/releases) · [USB package and recovery](BUILDING.md#package-firmware-for-usb-and-wi-fi)
 2. To install from source, extract the ZIP, rename the sketch folder to `PocketPlay`, and open `PocketPlay.ino` in Arduino IDE.

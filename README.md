@@ -2,11 +2,20 @@
 
 DIY handheld firmware for the **ESP32-S3**. Play retro games, listen to music, browse photos, and run your own small apps from microSD.
 
-[Player guide](README-USER.md) · [Hardware and wiring](docs/HARDWARE.md) · [Build guide](BUILDING.md) · [App SDK](docs/APP_SDK.md)
+[Downloads](#downloads) · [Player guide](README-USER.md) · [Hardware and wiring](docs/HARDWARE.md) · [Build guide](BUILDING.md) · [App SDK](docs/APP_SDK.md)
+
+## Downloads
+
+Open the [latest release](https://github.com/Moutazbaaj/Pocket-Play/releases/latest) for release notes and downloads. Earlier versions are listed under [all releases](https://github.com/Moutazbaaj/Pocket-Play/releases).
+
+| Download | Use it for |
+| --- | --- |
+| [PocketPlay.ino.bin](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/PocketPlay.ino.bin) | Updating an existing Pocket Play over Wi-Fi or from microSD. |
+| [PocketPlay-firmware.zip](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/PocketPlay-firmware.zip) | A firmware bundle with the update image, USB first-install and recovery image, and instructions. |
+| [SHA256SUMS.txt](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/SHA256SUMS.txt) | Verifying the direct download or the firmware ZIP. |
+| **Source code (zip)** under Assets | Building the tagged source in Arduino IDE. Extract it to a folder named `PocketPlay`. |
 
 ## Get started
-
-Build Pocket Play from source using the instructions below. Versioned downloads and release notes, when available, are listed under [GitHub Releases](https://github.com/Moutazbaaj/Pocket-Play/releases).
 
 The reference build uses an **ESP32-S3-WROOM-1-N16R8** with 16 MiB flash and 8 MiB PSRAM, a 320 × 240 ILI9341 display, an SPI microSD reader, and physical buttons. I²S audio and battery monitoring are optional. Confirm your wiring against the [pin map](docs/HARDWARE.md) before flashing.
 
