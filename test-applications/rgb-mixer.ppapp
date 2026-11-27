@@ -1,0 +1,87 @@
+-- PocketPlay SDK 1
+-- Title: RGB Mixer
+
+local black = app.rgb(9, 15, 23)
+local panel = app.rgb(22, 33, 48)
+local white = app.rgb(232, 241, 252)
+local muted = app.rgb(149, 166, 189)
+local accent = app.rgb(90, 215, 227)
+local channels = {"RED", "GREEN", "BLUE"}
+local markers = {app.rgb(255, 104, 119), app.rgb(94, 224, 150), app.rgb(101, 165, 255)}
+local hexDigits = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"}
+local values = {56, 184, 232}
+local selected = 1
+local message = "A: SAVE   B: RESET   L/R: +/-16"
+local swatchDirty = true
+local controlsDirty = true
+
+local function hexByte(value)
+  local high = value // 16 + 1
+  local low = value % 16 + 1
+  -- String library is unavailable in SDK 1, so index a table of hex digits.
+  return hexDigits[high] .. hexDigits[low]
+end
+
+function init()
+  local saved = math.tointeger(tonumber(app.load()))
+  if saved and saved >= 0 and saved <= 0xFFFFFF then
+    values = {saved >> 16, (saved >> 8) & 255, saved & 255}
+  end
+end
+
+function update(dt, pressed, held)
+  if (pressed & app.UP) ~= 0 then
+    selected = (selected + 1) % 3 + 1
+    controlsDirty = true
+  elseif (pressed & app.DOWN) ~= 0 then
+    selected = selected % 3 + 1
+    controlsDirty = true
+  end
+
+  local step = ((pressed & app.RIGHT) ~= 0 and 1 or 0) - ((pressed & app.LEFT) ~= 0 and 1 or 0)
+  step = step + ((pressed & app.R) ~= 0 and 16 or 0) - ((pressed & app.L) ~= 0 and 16 or 0)
+  if step ~= 0 then
+    values[selected] = math.max(0, math.min(255, values[selected] + step))
+    swatchDirty = true
+    controlsDirty = true
+  end
+  if (pressed & app.B) ~= 0 then
+    values = {56, 184, 232}
+    message = "A: SAVE   B: RESET   L/R: +/-16"
+    swatchDirty = true
+    controlsDirty = true
+  elseif (pressed & app.A) ~= 0 then
+    local packed = (values[1] << 16) | (values[2] << 8) | values[3]
+    message = app.save(tostring(packed)) and "SWATCH SAVED" or "COULD NOT SAVE. TRY AGAIN."
+    controlsDirty = true
+  end
+end
+
+function draw(full)
+  if full then
+    app.fill(0, 0, 320, 38, panel)
+    app.text(16, 11, "RGB Mixer", white, panel, 2)
+  end
+  if full or swatchDirty then
+    app.fill(16, 48, 288, 68, app.rgb(values[1], values[2], values[3]))
+    local code = "#" .. hexByte(values[1]) .. hexByte(values[2]) .. hexByte(values[3])
+    app.text(224, 16, code, accent, panel)
+    swatchDirty = false
+  end
+  if full or controlsDirty then
+    for i = 1, 3 do
+      local y = 122 + (i - 1) * 22
+      local bg = i == selected and panel or black
+      app.fill(16, y, 288, 18, bg)
+      app.text(24, y + 5, (i == selected and "> " or "  ") .. channels[i], markers[i], bg)
+      app.fill(104, y + 7, 136, 4, black)
+      local bar = values[i] * 136 // 255
+      if bar > 0 then app.fill(104, y + 7, bar, 4, markers[i]) end
+      app.text(264, y + 5, tostring(values[i]), white, bg)
+    end
+    app.fill(16, 188, 288, 36, black)
+    app.text(16, 192, message, accent, black)
+    app.text(16, 208, "UP/DOWN: RGB   LEFT/RIGHT: +/-1", muted, black)
+    controlsDirty = false
+  end
+end

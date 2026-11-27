@@ -1,0 +1,41 @@
+-- PocketPlay SDK 1
+-- Title: Button Lab
+
+local background = app.rgb(14, 24, 30)
+local bright = app.rgb(209, 250, 231)
+local accent = app.rgb(91, 219, 175)
+local taps = 0
+local message = "A: COUNT   B: RESET   SELECT: SAVE"
+local dirty = true
+
+function init()
+  taps = tonumber(app.load()) or 0
+end
+
+function update(dt, pressed, held)
+  if (pressed & app.A) ~= 0 then
+    taps = taps + 1
+    app.tone(650, 50)
+    dirty = true
+  end
+  if (pressed & app.B) ~= 0 then
+    taps = 0
+    dirty = true
+  end
+  if (pressed & app.SELECT) ~= 0 then
+    message = app.save(tostring(taps)) and "COUNT SAVED TO MICROSD" or "COULD NOT SAVE. TRY AGAIN."
+    dirty = true
+  end
+end
+
+function draw(full)
+  if full then
+    app.clear(background)
+    app.text(20, 32, "Button Lab", accent, background, 2)
+  end
+  if not (full or dirty) then return end
+  if not full then app.fill(20, 80, 280, 100, background) end
+  app.text(20, 90, "Count " .. taps, bright, background, 2)
+  app.text(20, 150, message, bright, background)
+  dirty = false
+end

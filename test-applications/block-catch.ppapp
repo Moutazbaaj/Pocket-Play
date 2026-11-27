@@ -1,0 +1,115 @@
+-- PocketPlay SDK 1
+-- Title: Block Catch
+
+local black = app.rgb(11, 16, 27)
+local field = app.rgb(22, 32, 54)
+local edge = app.rgb(51, 74, 113)
+local white = app.rgb(234, 241, 255)
+local muted = app.rgb(163, 183, 214)
+local paddleColor = app.rgb(88, 225, 174)
+local blockColor = app.rgb(255, 177, 82)
+
+local left, right, top, bottom = 20, 300, 58, 184
+local paddleWidth, paddleY, blockSize = 46, 173, 9
+local paddle = 137
+local x, y = 155, top + 6
+local score, best, lives = 0, 0, 3
+local state = "ready"
+local sceneDirty, hudDirty = true, true
+local paintedPaddle, paintedX, paintedY
+
+local function nextBlock(first)
+  x = first and 155 or math.random(left, right - blockSize)
+  y = top + 6
+end
+
+local function begin()
+  paddle, score, lives = 137, 0, 3
+  state = "playing"
+  nextBlock(true)
+  sceneDirty, hudDirty = true, true
+end
+
+function init()
+  local saved = math.tointeger(tonumber(app.load()))
+  if saved and saved >= 0 then best = saved end
+end
+
+function update(dt, pressed, held)
+  if state == "ready" or state == "over" then
+    if (pressed & app.A) ~= 0 then begin() end
+    return
+  end
+  if (pressed & app.START) ~= 0 then
+    state = state == "playing" and "paused" or "playing"
+    sceneDirty = true
+    return
+  end
+  if state ~= "playing" then return end
+
+  local direction = held | pressed
+  local horizontal = ((direction & app.RIGHT) ~= 0 and 1 or 0) - ((direction & app.LEFT) ~= 0 and 1 or 0)
+  paddle = math.max(left, math.min(right - paddleWidth, paddle + horizontal * dt * 0.19))
+
+  local lastBottom = y + blockSize
+  y = y + dt * math.min(0.23, 0.09 + score * 0.005)
+  if lastBottom <= paddleY and y + blockSize >= paddleY and x + blockSize > paddle and x < paddle + paddleWidth then
+    score = score + 1
+    hudDirty = true
+    app.tone(740, 40)
+    nextBlock(false)
+  elseif y >= bottom - blockSize then
+    lives = lives - 1
+    hudDirty = true
+    app.tone(210, 80)
+    if lives == 0 then
+      state = "over"
+      sceneDirty = true
+      if score > best then
+        best = score
+        app.save(tostring(best))
+      end
+    else
+      nextBlock(false)
+    end
+  end
+end
+
+function draw(full)
+  if full then
+    app.fill(0, 0, 320, 33, black)
+    app.text(16, 8, "Block Catch", white, black, 2)
+    app.text(16, 199, "LEFT/RIGHT: MOVE   START: PAUSE", muted, 0)
+  end
+  if full or hudDirty then
+    app.fill(16, 35, 288, 15, black)
+    app.text(20, 39, "SCORE " .. score, white, black)
+    app.text(129, 39, "LIVES " .. lives, muted, black)
+    app.text(221, 39, "BEST " .. best, muted, black)
+    hudDirty = false
+  end
+  if full or sceneDirty then
+    app.fill(left - 2, top - 2, right - left + 4, 2, edge)
+    app.fill(left - 2, bottom, right - left + 4, 2, edge)
+    app.fill(left - 2, top, 2, bottom - top, edge)
+    app.fill(right, top, 2, bottom - top, edge)
+    app.fill(left, top, right - left, bottom - top, field)
+    paintedPaddle, paintedX, paintedY = nil, nil, nil
+    sceneDirty = false
+    if state ~= "playing" then
+      local heading = state == "ready" and "GET READY" or state == "paused" and "PAUSED" or "GAME OVER"
+      local hint = state == "paused" and "PRESS START TO RESUME" or "PRESS A TO PLAY"
+      app.text(160 - #heading * 8, 96, heading, white, field, 2)
+      app.text(160 - #hint * 4, 130, hint, muted, field)
+    end
+  end
+  if state ~= "playing" then return end
+
+  local px, bx, by = math.floor(paddle), x, math.floor(y)
+  if px == paintedPaddle and bx == paintedX and by == paintedY then return end
+  if paintedPaddle then app.fill(paintedPaddle, paddleY, paddleWidth, 6, field) end
+  if paintedY then app.fill(paintedX, paintedY, blockSize, blockSize, field) end
+  app.fill(px, paddleY, paddleWidth, 6, paddleColor)
+  app.fill(bx, by, blockSize, blockSize, blockColor)
+  paintedPaddle, paintedX, paintedY = px, bx, by
+end
