@@ -1561,12 +1561,12 @@ void drawHomeConsoleIcon(System system, int center, int y, uint16_t accent) {
   }
 
   const int halfWidth = system == System::GameBoy ? 12 : 10;
-  Screen::fill(center - halfWidth, y, halfWidth * 2, 25, accent);
-  Screen::fill(center - halfWidth + 3, y + 3, halfWidth * 2 - 6, 11, Screen::theme.header);
-  Screen::fill(center - 8, y + 18, 6, 2, Screen::theme.header);
-  Screen::fill(center - 6, y + 16, 2, 6, Screen::theme.header);
-  Screen::fill(center + 5, y + 16, 3, 3, Screen::theme.header);
-  Screen::fill(center + 2, y + 20, 3, 3, Screen::theme.header);
+  Screen::fill(center - halfWidth, y, halfWidth * 2, 23, accent);
+  Screen::fill(center - halfWidth + 3, y + 3, halfWidth * 2 - 6, 10, Screen::theme.header);
+  Screen::fill(center - 8, y + 16, 6, 2, Screen::theme.header);
+  Screen::fill(center - 6, y + 14, 2, 6, Screen::theme.header);
+  Screen::fill(center + 5, y + 14, 3, 3, Screen::theme.header);
+  Screen::fill(center + 2, y + 18, 3, 3, Screen::theme.header);
 }
 
 // Center a label at the given font scale.
