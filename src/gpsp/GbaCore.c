@@ -149,7 +149,9 @@ const char *gbaCoreOpen(const char *romPath, const char *biosPath, const char *s
     skip_next_frame = 0;
     libretro_supports_bitmasks = true;
     retro_set_input_state(readInput);
-    init_sound();
+    error = "Could not allocate GBA audio buffers";
+    if (!init_sound())
+        goto failed;
     sound_set_output_enabled(audioEnabled);
     reset_gba();
     update_input();
@@ -184,6 +186,7 @@ void gbaCoreSetAudioEnabled(bool enabled)
 void gbaCoreClose(void)
 {
     memory_term();
+    sound_term();
     free(iwram);
     iwram = NULL;
     free(memory_map_read);

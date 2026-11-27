@@ -5,7 +5,7 @@
 #include <SPI.h>
 #include <algorithm>
 #include <driver/spi_master.h>
-#include <esp_attr.h>
+#include <esp_heap_caps.h>
 
 namespace {
 constexpr Screen::ThemeColors kLightTheme = {0xF7DF, 0xFFFF, 0xEF7E, 0xD71E, 0xBEBD, 0x1106, 0x428C, 0x0350};
@@ -79,7 +79,8 @@ static_assert(kGbaStripePixels == Screen::width * 6);
 static_assert(GBA_FRAME_WIDTH * 4 == Screen::width * 3);
 static_assert(GBA_FRAME_HEIGHT * 3 == Screen::height * 2);
 static_assert(GBA_FRAME_HEIGHT % 8 == 0);
-DMA_ATTR uint16_t gbaStripe[kGbaStripePixels];
+constexpr size_t kGbaStripeBytes = kGbaStripePixels * sizeof(uint16_t);
+uint16_t *gbaStripe = nullptr;
 spi_device_handle_t gbaDma = nullptr;
 uint32_t gbaDmaClockHz = 0;
 esp_err_t gbaDmaError = ESP_OK;
@@ -184,7 +185,7 @@ void drawGbaDmaPixels(const uint16_t *pixels, bool fullScreen) {
       }
     }
     spi_transaction_t transaction{};
-    transaction.length = sizeof(gbaStripe) * 8;
+    transaction.length = kGbaStripeBytes * 8;
     transaction.tx_buffer = gbaStripe;
     gbaDmaError = spi_device_transmit(gbaDma, &transaction);
   }
@@ -667,6 +668,14 @@ bool Screen::beginGbaVideo() {
     return false;
   }
 
+  // Reserve the internal stripe only while using DMA. Leave Arduino SPI usable on failure.
+  gbaStripe = static_cast<uint16_t *>(
+      heap_caps_malloc(kGbaStripeBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  if (!gbaStripe) {
+    Serial.println("GBA display DMA buffer unavailable. Using Arduino SPI.");
+    return false;
+  }
+
   // SPI2 is the write-only TFT. The SD reader stays on SPI3.
   // Arduino SPI and the IDF driver need exclusive ownership of SPI2.
   displaySpi.end();
@@ -677,7 +686,7 @@ bool Screen::beginGbaVideo() {
   bus.quadwp_io_num = -1;
   bus.quadhd_io_num = -1;
   bus.data4_io_num = bus.data5_io_num = bus.data6_io_num = bus.data7_io_num = -1;
-  bus.max_transfer_sz = sizeof(gbaStripe);
+  bus.max_transfer_sz = kGbaStripeBytes;
   bus.isr_cpu_id = ESP_INTR_CPU_AFFINITY_0;
 
   esp_err_t error = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
@@ -703,6 +712,8 @@ bool Screen::beginGbaVideo() {
   }
 
   gbaDma = nullptr;
+  free(gbaStripe);
+  gbaStripe = nullptr;
   Serial.printf("GBA display DMA unavailable (%s). Restoring Arduino SPI.\n", esp_err_to_name(error));
   ready = displaySpi.begin(kTftSck, -1, kTftMosi, kTftCs);
   return false;
@@ -714,6 +725,8 @@ void Screen::endGbaVideo() {
     spi_bus_remove_device(gbaDma);
     spi_bus_free(SPI2_HOST);
     gbaDma = nullptr;
+    free(gbaStripe);
+    gbaStripe = nullptr;
     ready = displaySpi.begin(kTftSck, -1, kTftMosi, kTftCs);
   }
 }

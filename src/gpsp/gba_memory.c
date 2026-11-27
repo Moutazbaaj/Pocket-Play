@@ -363,8 +363,10 @@ typedef struct {
   s16 phy_rom;              /* ROM page number (-1 means not mapped) */
 } gamepak_cache_entry_t;
 
-gamepak_cache_entry_t gamepak_blk_queue[1024];
-u16 gamepak_page_cache_slot[1024];
+// Allocate this metadata when opening a GBA game so BLE can use the internal heap at boot.
+enum { GAMEPAK_MAX_CACHE_PAGES = 1024 };
+static gamepak_cache_entry_t *gamepak_blk_queue;
+u16 *gamepak_page_cache_slot;
 u16 gamepak_last_code_page;
 bool gamepak_paging_active;
 
@@ -2259,6 +2261,11 @@ u8 *load_gamepak_page(u32 physical_index)
 
 bool init_gamepak_buffer(size_t rom_size)
 {
+  gamepak_blk_queue = gpsp_alloc_hot(GAMEPAK_MAX_CACHE_PAGES * sizeof(*gamepak_blk_queue));
+  gamepak_page_cache_slot = gpsp_alloc_hot(GAMEPAK_MAX_CACHE_PAGES * sizeof(*gamepak_page_cache_slot));
+  if (!gamepak_blk_queue || !gamepak_page_cache_slot)
+    return false;
+
   unsigned i;
   const size_t needed = (rom_size + gamepak_buffer_blocksize - 1) / gamepak_buffer_blocksize;
   gamepak_buffer_count = 0;
@@ -2276,7 +2283,7 @@ bool init_gamepak_buffer(size_t rom_size)
   const u16 cache_page_count = (u16)(32 * gamepak_buffer_count);
 
   // Initialize the circular LRU queue and invalidate physical-page lookups.
-  for (i = 0; i < 1024; i++)
+  for (i = 0; i < GAMEPAK_MAX_CACHE_PAGES; i++)
   {
     gamepak_page_cache_slot[i] = GAMEPAK_CACHE_ENTRY_INVALID;
     gamepak_blk_queue[i].phy_rom = -1;
@@ -2377,6 +2384,11 @@ void memory_term(void)
   {
     free(gamepak_buffers[--gamepak_buffer_count]);
   }
+  gamepak_paging_active = false;
+  free(gamepak_blk_queue);
+  gamepak_blk_queue = NULL;
+  free(gamepak_page_cache_slot);
+  gamepak_page_cache_slot = NULL;
 }
 
 bool memory_check_savestate(const u8 *src)

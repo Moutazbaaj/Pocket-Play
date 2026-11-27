@@ -256,7 +256,7 @@ void memory_term(void);
 u8 *load_gamepak_page(u32 physical_index);
 
 #define GAMEPAK_CACHE_ENTRY_INVALID 0xFFFFu
-extern u16 gamepak_page_cache_slot[1024];
+extern u16 *gamepak_page_cache_slot;
 extern u16 gamepak_last_code_page;
 extern u16 gamepak_lru_tail;
 extern bool gamepak_paging_active;

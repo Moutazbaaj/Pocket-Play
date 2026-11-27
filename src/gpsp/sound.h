@@ -101,7 +101,8 @@ void sound_timer_queue32(u32 channel, u32 value);
 unsigned sound_timer(fixed8_24 frequency_step, u32 channel);
 void sound_reset_fifo(u32 channel);
 void render_gbc_sound();
-void init_sound();
+bool init_sound(void);
+void sound_term(void);
 void sound_set_output_enabled(bool enabled);
 
 bool sound_check_savestate(const u8 *src);

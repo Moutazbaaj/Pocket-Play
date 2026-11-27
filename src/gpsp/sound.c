@@ -27,7 +27,7 @@ const u32 sound_frequency = GBA_SOUND_FREQUENCY;
 
 u32 sound_on;
 static bool sound_output_enabled = true;
-static s16 sound_buffer[BUFFER_SIZE];
+static s16 *sound_buffer;
 static u32 sound_buffer_base;
 
 static fixed16_16 gbc_sound_tick_step;
@@ -179,7 +179,7 @@ const s8 square_pattern_duty[4][8] =
 
 s8 wave_samples[64];
 
-u32 noise_table15[1024];
+static u32 *noise_table15;
 u32 noise_table7[4];
 
 const u32 gbc_sound_master_volume_table[4] = { 1, 2, 4, 0 };
@@ -561,7 +561,7 @@ void reset_sound(void)
 
   sound_on = 0;
   sound_buffer_base = 0;
-  memset(sound_buffer, 0, sizeof(sound_buffer));
+  memset(sound_buffer, 0, BUFFER_SIZE * sizeof(*sound_buffer));
 
   for(i = 0; i < 2; i++, ds++)
   {
@@ -592,8 +592,13 @@ void reset_sound(void)
   }
 }
 
-void init_sound()
+bool init_sound(void)
 {
+  sound_buffer = gpsp_alloc_hot(BUFFER_SIZE * sizeof(*sound_buffer));
+  noise_table15 = gpsp_alloc_hot(1024 * sizeof(*noise_table15));
+  if (!sound_buffer || !noise_table15)
+    return false;
+
   gbc_sound_tick_step =
    float_to_fp16_16(256.0f / sound_frequency);
 
@@ -601,15 +606,24 @@ void init_sound()
   init_noise_table(noise_table7, 127, 6);
 
   reset_sound();
+  return true;
+}
+
+void sound_term(void)
+{
+  free(sound_buffer);
+  sound_buffer = NULL;
+  free(noise_table15);
+  noise_table15 = NULL;
 }
 
 void sound_set_output_enabled(bool enabled)
 {
-  if (enabled && !sound_output_enabled)
+  if (enabled && !sound_output_enabled && sound_buffer)
   {
     // While muted the FIFOs keep moving but the mixer cursors stop.
     // Resume mixing at a common position with no PCM from before the mute.
-    memset(sound_buffer, 0, sizeof(sound_buffer));
+    memset(sound_buffer, 0, BUFFER_SIZE * sizeof(*sound_buffer));
     sound_buffer_base = gbc_sound_buffer_index;
     for (u32 i = 0; i < 2; i++)
     {
