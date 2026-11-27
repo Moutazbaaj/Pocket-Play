@@ -4,6 +4,10 @@ DIY handheld firmware for the **ESP32-S3**. Play retro games, listen to music, b
 
 [Downloads](#downloads) · [Player guide](README-USER.md) · [Hardware and wiring](docs/HARDWARE.md) · [Build guide](BUILDING.md) · [App SDK](docs/APP_SDK.md)
 
+<img src="docs/images/prototype/front.jpg" alt="Pocket Play perfboard prototype with a color display, red buttons, and the USB charger connected" width="640">
+
+The prototype uses a **150 × 90 mm** perfboard. [More prototype photos and enclosure dimensions](docs/HARDWARE.md#prototype-photos-and-dimensions)
+
 ## Downloads
 
 Open the [latest release](https://github.com/Moutazbaaj/Pocket-Play/releases/latest) for release notes and downloads. Earlier versions are listed under [all releases](https://github.com/Moutazbaaj/Pocket-Play/releases).
@@ -40,6 +44,8 @@ Use a FAT32 microSD card for games, media, and apps. Supply your own game files 
 | Apps and tools | microSD apps, Tile Puzzle, Timing, Snake, clock and countdown, flashlight, light sleep, and battery diagnostics |
 
 GBA and Genesis performance varies by title. Doom uses the handheld's physical controls and the reference 8 MiB PSRAM configuration. [Performance notes](docs/TECHNICAL_REFERENCE.md#measured-gba-performance) · [Doom setup](README-USER.md#play-doom)
+
+Earlier interface previews show the three Home layouts and the Display settings. [Launcher layouts](docs/images/ui/launcher-layouts-preview.png) · [Display settings](docs/images/ui/display-settings-preview.png)
 
 ## Develop an app
 

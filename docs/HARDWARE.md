@@ -2,6 +2,21 @@
 
 The reference build uses an ESP32-S3-WROOM-1-N16R8, a 320 × 240 ILI9341 TFT, an SPI microSD reader, and momentary buttons. The MAX98357A amplifier, speaker, and battery circuit are optional. [Firmware setup](../BUILDING.md#build-and-upload)
 
+## Prototype photos and dimensions
+
+The original prototype is built on a **150 × 90 mm (15 × 9 cm)** perfboard. The photos show where the major components sit on that build. Use the pin tables below for electrical connections.
+
+| View | What it shows |
+| --- | --- |
+| [Front](images/prototype/front.jpg) | TFT, buttons, step-up converter, USB-C charger, and SD card. |
+| [Rear](images/prototype/rear.jpg) | ESP32-S3 development board, battery, and the two speakers. |
+| [Button edge](images/prototype/button-edge.jpg) | Relative heights of the buttons, display, battery, and speakers. |
+| [Charger side](images/prototype/charger-side.jpg) | USB-C charger and power switch. |
+| [Card edge](images/prototype/card-edge.jpg) | SD card access under the display. |
+| [Amplifier supply close-up](images/prototype/amplifier-supply-capacitor.jpg) · [With both capacitors fitted](images/prototype/amplifier-supply-capacitors.jpg) | Underside of the perfboard during audio power testing. |
+
+[Bottom shell measurements](#bottom-enclosure-prototype)
+
 ## Display, storage, and audio
 
 The TFT and microSD reader use separate SPI buses. Use 3.3 V logic, connect the grounds, and follow each breakout’s supply requirements. [Default pin assignments](../Pins.h)
