@@ -37,6 +37,8 @@ constexpr uint32_t kScanMs = 6000;
 constexpr uint32_t kPairMs = 25000;
 constexpr uint32_t kSyncTimeoutMs = 10000;
 constexpr char kEnabledKey[] = "bleCtl";
+constexpr char kBootAttemptKey[] = "bleBoot";
+enum class BootAttempt : uint8_t { Idle, InProgress, Retry };
 #if CONFIG_IDF_TARGET_ESP32S3
 // The S3 controller requests a 32 KiB block after earlier allocations.
 // Allow headroom for those allocations and the remaining host/controller startup.
@@ -68,6 +70,8 @@ std::atomic<bool> saveController{false};
 enum class HostSync { Pending, Ready, NoAddress };
 std::atomic<HostSync> hostSync{HostSync::Pending};
 bool awaitingStartup = false;
+std::atomic<bool> reconnectPending{false};
+bool skipStartupReconnect = false;
 uint32_t startupAt = 0;
 struct SavedController { ble_addr_t address; char name[25]; };
 SavedController lastController{};
@@ -462,13 +466,8 @@ void hostSynced() {
     hostSync.store(HostSync::NoAddress);
     return;
   }
-  Request reconnect;
-  portENTER_CRITICAL(&uiLock);
-  reconnect.address = lastController.address;
-  memcpy(reconnect.name, lastController.name, sizeof(reconnect.name));
-  portEXIT_CRITICAL(&uiLock);
-  if (reconnect.name[0]) connectController(reconnect);
-  else setStatus(State::Ready, "Scan to pair a BLE controller");
+  setStatus(State::Ready, "Scan to pair a BLE controller");
+  reconnectPending.store(true);
   hostSync.store(HostSync::Ready);
 }
 
@@ -479,18 +478,19 @@ void hostTask(void *) {
 
 void startError(const char *message, int error = 0) {
   radioWanted.store(false);
-  setStatus(State::Error, message);
+  setStatus(State::StartupFailed, message);
   if (error) Serial.printf("Bluetooth: %s (%d)\n", message, error);
   else Serial.printf("Bluetooth: %s\n", message);
 }
 
 void startRadio() {
   if (radioRunning) return;
-  // Leave Bluetooth off on the next boot if startup aborts or resets the chip.
-  if (settings && settings->getBool(kEnabledKey, false) && !settings->putBool(kEnabledKey, false)) {
+  // Keep the user's setting separate from the marker that prevents a boot loop.
+  if (!settings || settings->putUChar(kBootAttemptKey, uint8_t(BootAttempt::InProgress)) != 1) {
     startError("Could not save Bluetooth recovery");
     return;
   }
+  reconnectPending.store(false);
   hostSync.store(HostSync::Pending);
   startupAt = millis();
   setStatus(State::Starting, "Starting Bluetooth");
@@ -565,25 +565,49 @@ bool stopRadio() {
   return true;
 }
 
+// Queue the saved pad from the launcher loop, after the boot peripherals are ready.
+bool requestReconnect() {
+  bool queued = false;
+  portENTER_CRITICAL(&uiLock);
+  if (lastController.name[0] && ui.state == State::Ready && pending.action == Command::None) {
+    pending.action = Command::Pair;
+    pending.address = lastController.address;
+    memcpy(pending.name, lastController.name, sizeof(pending.name));
+    ui.state = State::Pairing;
+    ui.status = "Reconnecting last controller";
+    ++ui.revision;
+    queued = true;
+  }
+  portEXIT_CRITICAL(&uiLock);
+  if (queued) ble_npl_eventq_put(nimble_port_get_dflt_eventq(), &commandEvent);
+  return queued;
+}
+
 void serviceStartup() {
-  if (!awaitingStartup) return;
+  if (!radioRunning) return;
   const auto synced = hostSync.load();
   if (synced == HostSync::Ready) {
-    // Let an automatic reconnect finish before enabling it on the next boot.
+    if (reconnectPending.exchange(false)) {
+      const bool skipReconnect = skipStartupReconnect;
+      skipStartupReconnect = false;
+      if (!skipReconnect && requestReconnect()) return;
+    }
+    if (!awaitingStartup) return;
+    // Keep recovery armed until any automatic reconnect has settled.
     portENTER_CRITICAL(&uiLock);
     const bool reconnecting = ui.state == State::Pairing || ui.state == State::Starting;
     portEXIT_CRITICAL(&uiLock);
     if (reconnecting) return;
     awaitingStartup = false;
-    if (settings && !settings->putBool(kEnabledKey, true)) {
-      Serial.println("Bluetooth: could not remember enabled setting");
+    if (settings->putUChar(kBootAttemptKey, uint8_t(BootAttempt::Idle)) != 1) {
+      Serial.println("Bluetooth: could not clear the startup marker");
     }
     Serial.println("Bluetooth: startup complete");
-  } else if (synced == HostSync::NoAddress || millis() - startupAt >= kSyncTimeoutMs) {
-    radioWanted.store(false);
-    if (stopRadio()) {
-      startError(synced == HostSync::NoAddress ? "Bluetooth address unavailable" : "Bluetooth startup timed out");
-    }
+  } else if (awaitingStartup && (synced == HostSync::NoAddress || millis() - startupAt >= kSyncTimeoutMs)) {
+    const char *reason = synced == HostSync::NoAddress ? "Bluetooth address unavailable"
+                                                     : "Bluetooth startup timed out";
+    if (stopRadio()) startError(reason);
+    else startError("Bluetooth startup cleanup failed");
   }
 }
 
@@ -619,11 +643,22 @@ void BluetoothControls::begin(Preferences &preferences, bool disableAtBoot) {
   }
   const bool wasEnabled = settings->getBool(kEnabledKey, false);
   if (disableAtBoot) {
-    if (wasEnabled) settings->putBool(kEnabledKey, false);
+    if (wasEnabled && !settings->putBool(kEnabledKey, false)) {
+      startError("Could not save Bluetooth recovery");
+      return;
+    }
+    setStatus(State::Off, "Bluetooth skipped (Start+Select)");
     Serial.println("Bluetooth: skipped at boot (Start+Select)");
     return;
   }
-  radioWanted.store(wasEnabled);
+  if (!wasEnabled) return;
+  const auto attempt = static_cast<BootAttempt>(settings->getUChar(kBootAttemptKey, uint8_t(BootAttempt::Idle)));
+  if (attempt == BootAttempt::InProgress) {
+    startError("Previous Bluetooth start failed");
+    return;
+  }
+  skipStartupReconnect = attempt == BootAttempt::Retry;
+  radioWanted.store(true);
   resume();
 #if CONFIG_SPIRAM_USE_MALLOC && CONFIG_IDF_TARGET_ESP32S3
   if (radioRunning && psramFound()) {
@@ -638,7 +673,15 @@ void BluetoothControls::begin(Preferences &preferences, bool disableAtBoot) {
 }
 
 void BluetoothControls::enableOnRestart() {
-  if (!settings || !settings->putBool(kEnabledKey, true)) {
+  if (!settings) {
+    startError("Bluetooth settings unavailable");
+    return;
+  }
+  const auto attempt = static_cast<BootAttempt>(settings->getUChar(kBootAttemptKey, uint8_t(BootAttempt::Idle)));
+  // A retry can start the radio without automatically reopening a failed connection.
+  if ((attempt == BootAttempt::InProgress &&
+       settings->putUChar(kBootAttemptKey, uint8_t(BootAttempt::Retry)) != 1) ||
+      !settings->putBool(kEnabledKey, true)) {
     startError("Could not save Bluetooth setting");
     return;
   }

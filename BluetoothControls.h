@@ -6,7 +6,7 @@ class Preferences;
 
 namespace BluetoothControls {
 constexpr int maxDevices = 5;
-enum class State { Off, RestartRequired, Starting, Ready, Scanning, Pairing, Connected, Disconnecting, Error };
+enum class State { Off, RestartRequired, Starting, Ready, Scanning, Pairing, Connected, Disconnecting, Error, StartupFailed };
 struct Snapshot {
   State state = State::Off;
   const char *status = "Bluetooth is off";

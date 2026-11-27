@@ -29,7 +29,7 @@ From Home, open **Settings → Connectivity → Bluetooth**, choose **Enable on 
 
 Pocket Play supports compatible Xbox and generic Bluetooth LE HID controllers. Sony DualShock and DualSense use Bluetooth Classic, which the ESP32-S3 cannot pair with directly. Pocket Play remembers the last bonded pad and tries to reconnect when Bluetooth starts. [Bluetooth compatibility](docs/HARDWARE.md#bluetooth-controllers)
 
-One restart is expected when you enable Bluetooth. If Home keeps restarting or Bluetooth is off when you return, update the firmware and verify that the startup banner shows the expected **8 MiB PSRAM** on the reference board. Hold the physical **Start + Select** buttons during power-on or reset to clear the Bluetooth toggle. Release them at Home. Serial Monitor at **115200 baud** shows `Bluetooth: startup complete` when the radio is ready. [Bluetooth troubleshooting and serial output](docs/HARDWARE.md#troubleshoot-bluetooth-startup)
+One restart is expected when you enable Bluetooth. If the menu shows **Failed**, read the status line below it. Use **Enable on Restart** and **Restart Console** to retry without automatically connecting the last paired pad, then scan manually. To disable Bluetooth at boot, hold the physical **Start + Select** buttons during power-on or reset, then release them at Home. Serial Monitor at **115200 baud** shows `Bluetooth: startup complete` when startup finishes. The reference board should report **8 MiB PSRAM**. [Bluetooth troubleshooting and serial output](docs/HARDWARE.md#troubleshoot-bluetooth-startup)
 
 ## Upload files over Wi-Fi
 

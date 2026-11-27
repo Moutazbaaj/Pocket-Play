@@ -2940,7 +2940,7 @@ uint16_t settingsAccent() {
 
 // Wi-Fi and Bluetooth both show the startup toggle and restart action at all times.
 void drawConnectivityStartupRow(SettingsItem item, int y, bool selected,
-                                bool pending, bool active = false) {
+                                bool pending, bool active = false, const char *inactiveValue = "OFF") {
   const uint16_t accent = settingsAccent();
   const uint16_t bg = selected ? Screen::theme.selected : Screen::theme.panel;
   const uint16_t fg = selected ? Screen::theme.text : Screen::theme.muted;
@@ -2949,7 +2949,7 @@ void drawConnectivityStartupRow(SettingsItem item, int y, bool selected,
   drawCard(6, y, 308, kSettingsSubmenuRowHeight, selected, accent);
   if (item == SettingsItem::EnableOnRestart) {
     Screen::text(19, textY, settingsLabel(active ? SettingsItem::Bluetooth : item), fg, bg);
-    drawMenuValue(kMenuValueCenter, textY, pending ? "PENDING" : active ? "ON" : "OFF",
+    drawMenuValue(kMenuValueCenter, textY, pending ? "PENDING" : active ? "ON" : inactiveValue,
                   valueColor, bg, true);
   } else {
     Screen::text(19, textY, settingsLabel(item), fg, bg);
@@ -3472,6 +3472,7 @@ void drawBluetooth(bool full, int previous = -1) {
   static_assert(controllerRowsY + BluetoothControls::maxDevices * controllerRowPitch +
                 controllerRowHeight <= statusY);
   const bool restartPending = bluetoothMenu.state == State::RestartRequired;
+  const char *inactiveValue = bluetoothMenu.state == State::StartupFailed ? "FAILED" : "OFF";
   const uint16_t accent = settingsAccent();
   if (full) drawHeader("BLUETOOTH", "LEFT/RIGHT: CHANGE   A: SELECT", accent);
   if (previous < 0 && !full) Screen::fill(0, 49, Screen::width, 170, Screen::theme.background);
@@ -3480,7 +3481,8 @@ void drawBluetooth(bool full, int previous = -1) {
     const bool selected = i == bluetoothSelection;
     if (i < kBluetoothScanRow) {
       const int y = kSettingsRowsY + i * kSettingsSubmenuRowPitch;
-      drawConnectivityStartupRow(kBluetoothStartupRows[i], y, selected, restartPending, bluetoothMenu.enabled);
+      drawConnectivityStartupRow(kBluetoothStartupRows[i], y, selected, restartPending,
+                                 bluetoothMenu.enabled, inactiveValue);
       continue;
     }
     const int y = controllerRowsY + (i - kBluetoothScanRow) * controllerRowPitch;
@@ -6624,8 +6626,8 @@ void setup() {
   const bool transferBoot = WifiTransfer::loadSettings(settingsStore) && !bluetoothRecovery;
   const uint8_t doomSlot = settingsStore.getUChar(kDoomBootKey, 0);
   const bool doomBoot = doomSlot && settingsStore.remove(kDoomBootKey) && !transferBoot && !bluetoothRecovery;
-  // Give the radio first access to contiguous internal RAM.
-  if (!transferBoot) BluetoothControls::begin(settingsStore, bluetoothRecovery);
+  // Give the radio first access to contiguous internal RAM on launcher boots.
+  if (!transferBoot && !doomBoot) BluetoothControls::begin(settingsStore, bluetoothRecovery);
   loadDeviceSettings();
   const bool displayStarted = Screen::begin();
   uint32_t splashStartedAt = 0;
@@ -6677,6 +6679,8 @@ void setup() {
       doomError = "DOOM needs a microSD card.";
     }
   }
+  // A failed Doom boot returns to the launcher. Successful Doom boots use physical controls.
+  if (doomBoot) BluetoothControls::begin(settingsStore);
   if (soundEnabled && !ensureAudioHardware()) {
     soundEnabled = false;
     saveDeviceSettings();

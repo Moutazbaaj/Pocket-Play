@@ -99,7 +99,7 @@ Pocket Play supports one Bluetooth LE HID gamepad at a time, including Xbox Wire
 
 ### Troubleshoot Bluetooth startup
 
-At 115200 baud, check the boot log for 8 MiB PSRAM, the Bluetooth free/largest internal heap values, and `Bluetooth: startup complete`. The radio needs at least 64 KiB free internal heap and a 40 KiB largest block. If startup fails, hold the physical **Start + Select** buttons during reset to disable Bluetooth. If the failure happens on wake, save and quit the game, then enable Bluetooth from Home and restart. Include the startup log when reporting the issue. [Bluetooth startup code](../BluetoothControls.cpp#L487)
+At 115200 baud, check the boot log for 8 MiB PSRAM, the Bluetooth free/largest internal heap values, and `Bluetooth: startup complete`. The radio needs at least 64 KiB free internal heap and a 40 KiB largest block. If the Bluetooth menu shows **Failed**, choose **Enable on Restart** and **Restart Console** to retry without automatic reconnection to the last paired pad. Scan for the controller after startup. Hold the physical **Start + Select** buttons during reset to disable Bluetooth. If the failure happens on wake, save and quit the game before retrying. Include the startup log when reporting the issue. [Bluetooth startup code](../BluetoothControls.cpp)
 
 ## Bottom enclosure prototype
 
