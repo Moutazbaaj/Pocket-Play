@@ -9,6 +9,7 @@ namespace Screen {
 constexpr int width = 320;
 constexpr int height = 240;
 constexpr int marqueeGapPixels = 24;
+constexpr int compactTextAdvance = 6;
 constexpr uint16_t black = 0x0000;
 constexpr uint16_t white = 0xFFFF;
 struct ThemeColors {
@@ -45,10 +46,12 @@ uint32_t clockHz();
 void fill(int x, int y, int w, int h, uint16_t color);
 // Draw text using the 8 by 8 font, an explicit background, and an integer scale.
 void text(int x, int y, const char *value, uint16_t fg, uint16_t bg, int scale = 1);
-// Draw a centered 5 by 7 label for Home cards. Supports uppercase letters, spaces, and periods.
+enum class TextFont { Standard, Compact };
+// Draw a centered label using the 5 by 7 font.
 void compactLabel(int centerX, int y, const char *value, uint16_t fg, uint16_t bg);
 // Draw a one-row viewport of width w with a horizontal pixel offset.
-void marqueeText(int x, int y, int w, const char *value, int offset, uint16_t fg, uint16_t bg);
+void marqueeText(int x, int y, int w, const char *value, int offset, uint16_t fg, uint16_t bg,
+                 TextFont font = TextFont::Standard);
 // Transfer a contiguous RGB565 rectangle to the screen.
 void drawRgb565(const uint16_t *pixels, int x, int y, int w, int h);
 // Draw 160 by 144 RGB565 output from the GB and GBC core.

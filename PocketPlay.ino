@@ -1455,18 +1455,24 @@ bool homeHasMusicTitle() {
 
 // Render a static name or advance its bounded marquee without repainting surrounding content.
 void drawMusicTitle(int x, int y, int width, uint16_t fg, uint16_t bg,
-                    bool centered, bool largeWhenItFits, bool redraw) {
+                    bool centered, bool largeWhenItFits, bool redraw,
+                    Screen::TextFont font = Screen::TextFont::Standard) {
   if (musicTitleView != view) {
     musicTitleView = view;
     musicTitleStartedAt = millis();
     musicTitleLastOffset = -1;
   }
-  const int textWidth = int(musicTrackTitle.length()) * 8;
+  const bool compact = font == Screen::TextFont::Compact;
+  const int textWidth = int(musicTrackTitle.length()) * (compact ? Screen::compactTextAdvance : 8);
   if (textWidth <= width) {
     if (redraw) {
-      const int scale = largeWhenItFits && textWidth * 2 <= width ? 2 : 1;
-      const int inset = centered ? (width - textWidth * scale) / 2 : 0;
-      Screen::text(x + inset, y - (scale - 1) * 4, musicTrackTitle.c_str(), fg, bg, scale);
+      if (compact) {
+        Screen::compactLabel(x + width / 2, y, musicTrackTitle.c_str(), fg, bg);
+      } else {
+        const int scale = largeWhenItFits && textWidth * 2 <= width ? 2 : 1;
+        const int inset = centered ? (width - textWidth * scale) / 2 : 0;
+        Screen::text(x + inset, y - (scale - 1) * 4, musicTrackTitle.c_str(), fg, bg, scale);
+      }
     }
     return;
   }
@@ -1476,7 +1482,7 @@ void drawMusicTitle(int x, int y, int width, uint16_t fg, uint16_t bg,
   const uint32_t phase = (millis() - musicTitleStartedAt) % cycleMs;
   const int offset = phase < holdMs ? 0 : (phase - holdMs) / stepMs;
   if (redraw || offset != musicTitleLastOffset) {
-    Screen::marqueeText(x, y, width, musicTrackTitle.c_str(), offset, fg, bg);
+    Screen::marqueeText(x, y, width, musicTrackTitle.c_str(), offset, fg, bg, font);
     musicTitleLastOffset = offset;
   }
 }
@@ -1500,7 +1506,7 @@ void drawHomeMusicTitle(bool redraw) {
     case HomeStyle::Grid:
       drawMusicTitle(homeAppX(kMusicMenuItem) + 6,
                      homeRowY(homePosition(kMusicMenuItem) / kHomeColumns) + kHomeCardDetailY,
-                     kHomeCardWidth - 12, fg, bg, true, false, redraw);
+                     kHomeCardWidth - 12, fg, bg, true, false, redraw, Screen::TextFont::Compact);
       break;
     case HomeStyle::Carousel:
       drawMusicTitle(kHomeCarouselCenterX - kHomeCarouselDetailWidth / 2, kHomeCarouselDetailY,
@@ -1593,8 +1599,8 @@ void drawHomeGridCard(int item) {
   if (item == kMusicMenuItem && homeHasMusicTitle()) {
     drawHomeMusicTitle(true);
   } else {
-    const String detail = homeItemDetail(item, 11);
-    drawCenteredText(center, y + kHomeCardDetailY, detail.c_str(), selected ? accent : Screen::theme.muted, bg);
+    const String detail = homeItemDetail(item, (kHomeCardWidth - 12) / Screen::compactTextAdvance);
+    Screen::compactLabel(center, y + kHomeCardDetailY, detail.c_str(), selected ? accent : Screen::theme.muted, bg);
   }
 }
 
