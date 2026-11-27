@@ -9,9 +9,9 @@ Pocket Play is a DIY handheld by Moutaz Baaj. It plays Game Boy, Game Boy Color,
 
 ## Download and install
 
-If your Pocket Play already offers a firmware updater, download `PocketPlay.ino.bin`. For a blank board, a board without compatible update slots, or recovery, use the USB image in the firmware ZIP. [Downloads](README.md#downloads) · [Wi-Fi update](#update-firmware-over-wi-fi) · [microSD update](#update-firmware-from-microsd)
+Build the firmware in Arduino IDE. Use USB for a blank board, a board without compatible update slots, or recovery. If your console already offers a firmware updater, use **Sketch → Export Compiled Binary** to get `PocketPlay.ino.bin`. [Downloads](README.md#downloads) · [Wi-Fi update](#update-firmware-over-wi-fi) · [microSD update](#update-firmware-from-microsd)
 
-1. If a release provides a USB package for your hardware, follow its flashing instructions. To build from source, download `PocketPlay-source.zip` from the release or use **Code → Download ZIP** on the repository. [GitHub Releases](https://github.com/Moutazbaaj/Pocket-Play/releases) · [USB package and recovery](BUILDING.md#package-firmware-for-usb-and-wi-fi)
+1. Download `PocketPlay-source.zip` from the release or use **Code → Download ZIP** on the repository. [GitHub Releases](https://github.com/Moutazbaaj/Pocket-Play/releases) · [USB package and recovery](BUILDING.md#package-firmware-for-usb-and-wi-fi)
 2. To install from source, extract the ZIP, name the sketch folder `PocketPlay` if needed, and open `PocketPlay.ino` in Arduino IDE.
 3. In **Boards Manager**, select **esp32 by Espressif Systems** and install **3.3.2**, the version used for the current reference build and its Wi-Fi Transfer. Use this same board package version on each computer you build from. [Espressif 3.3.2 release](https://github.com/espressif/arduino-esp32/releases/tag/3.3.2)
 4. For the reference **ESP32-S3-WROOM-1-N16R8** board, select **ESP32S3 Dev Module**, **16 MB flash**, **OPI PSRAM**, and the partition scheme **16M Flash (3MB APP/9.9MB FATFS)**. [Full board settings](BUILDING.md#build-and-upload) · [Wiring](docs/HARDWARE.md)
@@ -53,12 +53,12 @@ You can make your own small games or tools with the [app SDK](docs/APP_SDK.md).
 
 ## Update firmware over Wi-Fi
 
-1. Get the release’s Pocket Play app image ending in `.ino.bin` for your wiring. If you compiled the firmware yourself, use **Sketch → Export Compiled Binary** to get `PocketPlay.ino.bin`. [Build and packaging](BUILDING.md#package-firmware-for-usb-and-wi-fi)
+1. Build for your wiring and use **Sketch → Export Compiled Binary** to get `PocketPlay.ino.bin`. [Build and packaging](BUILDING.md#package-firmware-for-usb-and-wi-fi)
 2. Start a Wi-Fi transfer session and open the browser page. Under **Firmware update**, choose the file, select **Install firmware**, and confirm.
 3. Keep the console powered and stay connected. The browser’s bar shows upload progress. The current firmware also shows **Installing update** and **Keep the console powered** in the center of the console above a bar showing flash progress.
 4. When the browser says **Firmware ready**, choose **Restart console**. Pocket Play starts the new firmware with Wi-Fi off.
 
-Direct browser updates work without a microSD card. Both update methods require compatible dual 3 MiB app slots and the existing firmware’s update feature. If you see a message that USB is required, use the reference partition scheme and install over USB once. If Pocket Play cannot start after updating, use the USB recovery package. [First install](#download-and-install) · [USB recovery](BUILDING.md#package-firmware-for-usb-and-wi-fi)
+Direct browser updates work without a microSD card. Both update methods require compatible dual 3 MiB app slots and the existing firmware’s update feature. If you see a message that USB is required, use the reference partition scheme and install over USB once. If Pocket Play cannot start after updating, rebuild the reference firmware and follow the USB recovery steps. [First install](#download-and-install) · [USB recovery](BUILDING.md#package-firmware-for-usb-and-wi-fi)
 
 ## Update firmware from microSD
 

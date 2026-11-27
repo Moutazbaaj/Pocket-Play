@@ -14,10 +14,10 @@ Open the [latest release](https://github.com/Moutazbaaj/Pocket-Play/releases/lat
 
 | Download | Use it for |
 | --- | --- |
-| [PocketPlay.ino.bin](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/PocketPlay.ino.bin) | Updating an existing Pocket Play over Wi-Fi or from microSD. |
-| [PocketPlay-firmware.zip](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/PocketPlay-firmware.zip) | A firmware bundle with the update image, USB first-install and recovery image, and instructions. |
 | [PocketPlay-source.zip](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/PocketPlay-source.zip) | Building the matching source in Arduino IDE. Extract it and open `PocketPlay/PocketPlay.ino`. |
-| [SHA256SUMS.txt](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/SHA256SUMS.txt) | Verifying the update image, firmware ZIP, or source ZIP. |
+| [SHA256SUMS.txt](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/SHA256SUMS.txt) | Verifying the source ZIP. |
+
+This release is built from source. Use Arduino IDE to install over USB or export the `PocketPlay.ino.bin` update image. [Build and firmware packaging](BUILDING.md)
 
 ## Get started
 
@@ -25,7 +25,7 @@ The reference build uses an **ESP32-S3-WROOM-1-N16R8** with 16 MiB flash and 8 M
 
 | Your device | Installation |
 | --- | --- |
-| New board, a different partition layout, or a console that needs recovery | Install over **USB-to-UART** with the reference board profile. A release may provide a USB package for the reference wiring. [Build and flash](BUILDING.md#build-and-upload) · [USB recovery](BUILDING.md#package-firmware-for-usb-and-wi-fi) |
+| New board, a different partition layout, or a console that needs recovery | Build and install over **USB-to-UART** with the reference board profile. [Build and flash](BUILDING.md#build-and-upload) · [USB recovery](BUILDING.md#package-firmware-for-usb-and-wi-fi) |
 | Pocket Play already running with compatible OTA slots | Select the matching `.ino.bin` under **Firmware update** on the Wi-Fi Transfer page, or copy it to microSD and choose **Settings → About → Update Software**. [Wi-Fi update](README-USER.md#update-firmware-over-wi-fi) · [microSD update](README-USER.md#update-firmware-from-microsd) |
 
 Use a FAT32 microSD card for games, media, and apps. Supply your own game files and Doom IWADs. [Card layout and formats](README-USER.md#set-up-the-microsd-card)
