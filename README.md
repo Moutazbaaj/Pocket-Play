@@ -10,6 +10,8 @@ The prototype uses a **150 × 90 mm** perfboard. [More prototype photos and encl
 
 ## Downloads
 
+**v1.0.2** gives each emulator its own settings page, puts firmware and build details first in About, and keeps Genesis on Arduino SPI after a reset was reported with its DMA option.
+
 Open the [latest release](https://github.com/Moutazbaaj/Pocket-Play/releases/latest) for release notes and downloads. Earlier versions are listed under [all releases](https://github.com/Moutazbaaj/Pocket-Play/releases).
 
 | Download | Use it for |
@@ -17,7 +19,7 @@ Open the [latest release](https://github.com/Moutazbaaj/Pocket-Play/releases/lat
 | [PocketPlay-source.zip](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/PocketPlay-source.zip) | Building the matching source in Arduino IDE. Extract it and open `PocketPlay/PocketPlay.ino`. |
 | [SHA256SUMS.txt](https://github.com/Moutazbaaj/Pocket-Play/releases/latest/download/SHA256SUMS.txt) | Verifying the source ZIP. |
 
-This release is built from source. Use Arduino IDE to install over USB or export the `PocketPlay.ino.bin` update image. [Build and firmware packaging](BUILDING.md)
+Use Arduino IDE to install from source over USB or export the `PocketPlay.ino.bin` update image. When a release includes a matching `PocketPlay.ino.bin`, you can use it directly for a Wi-Fi or microSD update. [Build and firmware packaging](BUILDING.md)
 
 ## Get started
 
@@ -46,6 +48,10 @@ Use a FAT32 microSD card for games, media, and apps. Supply your own game files 
 GBA and Genesis performance varies by title. Doom uses the handheld's physical controls and the reference 8 MiB PSRAM configuration. [Performance notes](docs/TECHNICAL_REFERENCE.md#measured-gba-performance) · [Doom setup](README-USER.md#play-doom)
 
 Earlier interface previews show the three Home layouts and the Display settings. [Launcher layouts](docs/images/ui/launcher-layouts-preview.png) · [Display settings](docs/images/ui/display-settings-preview.png)
+
+## Emulator settings and About
+
+Open **Settings → Emulation** to adjust each console separately. Game Boy Advance and Sega Genesis also have frameskip controls. **Settings → About → About Pocket Play** opens on the installed firmware version and build information. [Player guide](README-USER.md#change-the-display-and-sound) · [Genesis performance](docs/TECHNICAL_REFERENCE.md#genesis-performance-settings)
 
 ## Develop an app
 

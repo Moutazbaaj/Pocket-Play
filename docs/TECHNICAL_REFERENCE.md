@@ -60,7 +60,7 @@ The console shows a centered installation screen. Its percentage follows success
 
 ## GBA settings and trade-offs
 
-Use **Native** and **Auto** as the first settings to try. The ESP32-S3 port runs the ARM/Thumb interpreter and uses internal RAM for hot buffers when possible. The display task runs on the other core and can skip a presentation when busy. Larger ROMs page from microSD into a PSRAM cache.
+Open **Settings → Emulation → Game Boy Advance** and try **Native** and **Auto** first. The ESP32-S3 port runs the ARM/Thumb interpreter and uses internal RAM for hot buffers when possible. The display task runs on the other core and can skip a presentation when busy. Larger ROMs page from microSD into a PSRAM cache.
 
 | Setting | Options |
 | --- | --- |
@@ -71,6 +71,19 @@ Use **Native** and **Auto** as the first settings to try. The ESP32-S3 port runs
 | Game Sound | Off on a fresh install. Turning it off bypasses GBA mixer work. Volume adjusts PCM level. |
 
 At 40 MHz, the native frame takes about 15.36 ms to transfer and the full frame takes 30.72 ms, before overhead.
+
+## Genesis performance settings
+
+Open **Settings → Emulation → Sega Genesis** from Home or from the in-game pause menu. Settings are saved automatically and take effect when a game starts or resumes. An enabled game profile can override display size.
+
+| Setting | Options |
+| --- | --- |
+| **Display Size** | **Native** centers the original image and is the default for Genesis. **Fit** keeps the aspect ratio. **Full** fills the panel. |
+| **Frameskip** | **Auto** can skip one render when the core is behind or the display is busy. **None** renders every emulated frame. **Light** renders every second frame and **High** renders every fourth. The emulated CPUs and audio chips still advance. |
+
+Start with **Native** and **Auto**. Try **Light** if the game itself is running slowly. Genesis uses Arduino SPI in v1.0.2 after a reset was reported with DMA enabled. The firmware ignores the old Genesis DMA preference. The GBA Transfer option is still available under **Game Boy Advance**.
+
+Genesis exchanges two PSRAM framebuffers between the emulator and display task, avoiding a full-frame copy. Use Serial Monitor at **115200 baud** to compare **emulated FPS** with the roughly 60 Hz NTSC or 50 Hz PAL target, and **display FPS** to see how often a picture reaches the panel. Performance varies by game.
 
 ## Measured GBA performance
 

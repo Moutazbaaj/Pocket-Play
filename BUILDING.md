@@ -14,7 +14,7 @@ git clone https://github.com/Moutazbaaj/Pocket-Play.git PocketPlay
 2. In **Boards Manager**, select **esp32 by Espressif Systems**, choose **3.3.2** in the version list, and install it. This is the reference build and Wi-Fi Transfer version on macOS and Windows. The board package version is independent of the Arduino IDE version. If the package is missing, add Espressif’s stable package index under **Additional Boards Manager URLs** in Preferences. [Installation guide](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html) · [Arduino-ESP32 3.3.2 release](https://github.com/espressif/arduino-esp32/releases/tag/3.3.2)
 3. Select the board options below. Connect Pocket Play through the **USB-to-UART** port and select that serial port.
 4. Click **Verify**, then **Upload**. Close any other serial monitor if the port is busy. If the board fails to enter download mode automatically, hold **BOOT**, tap **RESET/EN**, then release **BOOT** and retry the upload. [Espressif upload troubleshooting](https://docs.espressif.com/projects/arduino-esp32/en/latest/troubleshooting.html)
-5. Open Serial Monitor at **115200 baud**. The startup log reports the detected flash and PSRAM. The target module should report **16 MiB flash** and **8 MiB PSRAM**.
+5. Open Serial Monitor at **115200 baud**. The startup log reports the detected flash and PSRAM. The target module should report **16 MiB flash** and **8 MiB PSRAM**. On the handheld, open **Settings → About → About Pocket Play → Build version** to confirm the installed firmware and Arduino-ESP32 versions.
 
 | Arduino IDE option | Value for the N16R8 build |
 | --- | --- |

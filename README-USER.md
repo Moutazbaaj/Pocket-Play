@@ -167,11 +167,11 @@ Choose **Settings** on Home or in the game pause menu. Pressing **Menu** on Home
 
 - **Display** contains **Display Brightness**, **Theme**, **Home Style**, and **TFT Speed**. Choose **Light** or **Dark** under **Theme**. The choice is applied immediately and saved. Brightness changes the backlight from 20% to 100% in 20-point steps and saves the selected level. For a DIY build, wire the TFT’s **LED / BL** backlight control to **GPIO38** if the pin accepts a 3.3 V logic signal. If the LED pad supplies power to the backlight, use a backlight switch controlled by GPIO38. [Display wiring](docs/HARDWARE.md#display-storage-and-audio)
 - **Sound** contains **Game Sound** and **Volume**. The volume also applies to the music player. Audio output requires a connected speaker and I²S amplifier. If loud playback causes screen flicker, check the amplifier power connection. [Amplifier wiring](docs/HARDWARE.md#amplifier-power-and-display-flicker)
-- **Emulation** contains the display sizes, GBA Frameskip, and GBA Transfer. **GB / NES / Sega Size** offers **Native**, **Fit**, and **Full**. For a slow GBA game, try **GBA Display → Native** and **GBA Frameskip → Auto**.
+- **Emulation** has separate pages for **Game Boy**, **Game Boy Color**, **Game Boy Advance**, **NES**, **Master System**, **Sega Game Gear**, and **Sega Genesis**. Each page saves its display size independently. **Game Boy Advance** also offers **Frameskip** and **Transfer**. **Sega Genesis** offers **Frameskip** and uses Arduino SPI.
 - **Power** contains **Sleep Console** and **Auto Sleep**. [Sleep and wake](#sleep-and-wake)
-- **Connectivity** contains Bluetooth pairing and Wi-Fi file transfer. **Device Tools** opens the hardware tests. **About** opens **About Pocket Play**, **Diagnostic Log**, **Install Application**, and **Update Software**. Open **About Pocket Play** to see the software version. Its **Build versions** page also shows the build ID and the installed Arduino-ESP32 and ESP-IDF versions.
+- **Connectivity** contains Bluetooth pairing and Wi-Fi file transfer. **Device Tools** opens the hardware tests. **About** opens **About Pocket Play**, **Diagnostic Log**, **Install Application**, and **Update Software**.
 
-In **About Pocket Play**, scroll to **Network addresses** for the factory, Wi-Fi client, Wi-Fi hotspot, and Bluetooth LE MAC addresses. **Device stats** shows the chip revision and hardware details.
+Open **Settings → About → About Pocket Play**. The first page, **Build version**, shows the installed firmware version, build ID, Arduino-ESP32 version, and ESP-IDF version. Use the D-pad to move through **Device status**, **Network addresses**, **Library status**, **Emulator cores**, **Games and saves**, **Music and tools**, **Display and power**, **Pocket Play**, **Moutaz Baaj**, and **Project credits**. **Network addresses** lists the factory, Wi-Fi client, hotspot, and Bluetooth LE MAC addresses.
 
 ## Device Tools
 
