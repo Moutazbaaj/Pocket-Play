@@ -58,7 +58,7 @@ extern "C" {
 
 constexpr int kAudioRate = 32768;
 constexpr char kConsoleName[] = "Pocket Play";
-constexpr char kConsoleVersion[] = "1.0.1";
+constexpr char kConsoleVersion[] = "1.0.2";
 #ifndef POCKETPLAY_BUILD_ID
 #define POCKETPLAY_BUILD_ID __DATE__ " " __TIME__
 #endif
