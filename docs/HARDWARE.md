@@ -95,11 +95,13 @@ Check mapping in **Settings → Device Tools → Button Test**. Physical Start a
 
 ## Bluetooth controllers
 
-Pocket Play supports one Bluetooth LE HID gamepad at a time, including Xbox Wireless Controllers with compatible BLE firmware. The radio starts disabled. Scan and pair manually whenever Bluetooth starts or resumes from sleep. Sony DualShock and DualSense use Bluetooth Classic in wireless mode. [Pairing steps](../README-USER.md#pair-a-bluetooth-controller) · [Controller protocol reference](https://bluepad32.readthedocs.io/en/latest/supported_gamepads/)
+Pocket Play supports one Bluetooth LE HID gamepad at a time, including Xbox Wireless Controllers with compatible BLE firmware. The radio starts disabled. After the first pairing, Pocket Play remembers the bonded controller and scans for its return while Bluetooth is running. Turning Bluetooth off preserves the bond. Sony DualShock and DualSense use Bluetooth Classic in wireless mode. [Pairing steps](../README-USER.md#pair-a-bluetooth-controller) · [Controller protocol reference](https://bluepad32.readthedocs.io/en/latest/supported_gamepads/)
 
 ### Troubleshoot Bluetooth startup
 
 At 115200 baud, check the boot log for 8 MiB PSRAM, the Bluetooth free/largest internal heap values, and `Bluetooth: startup complete`. The radio needs at least 64 KiB free internal heap and a 40 KiB largest block. An interrupted Bluetooth startup triggers one retry on the next boot. If the retry fails, choose **Enable on Restart** and **Restart Console** to schedule another attempt. Hold the physical **Start + Select** buttons during reset to disable Bluetooth. If the failure happens on wake, save and quit the game before retrying. Include the startup log when reporting the issue. [Bluetooth startup code](../BluetoothControls.cpp)
+
+The Arduino-ESP32 3.3.2 reference build gives the Bluetooth core’s IPC task a 3 KiB stack to cover the driver’s interrupt allocation during radio startup. [IPC source and trace details](../src/esp32_ipc/README.md)
 
 ## Bottom enclosure prototype
 

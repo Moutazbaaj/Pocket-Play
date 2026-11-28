@@ -28,6 +28,8 @@ Copyright © 2026 Moutaz Baaj. Original Pocket Play code is available under the 
 
 The reference build uses [Arduino-ESP32 3.3.2](https://github.com/espressif/arduino-esp32/releases/tag/3.3.2). This package includes Arduino core and library code under [LGPL v2.1 and component-specific terms](https://github.com/espressif/arduino-esp32/blob/3.3.2/LICENSE.md). It builds on [ESP-IDF 5.5.1](https://github.com/espressif/esp-idf/tree/v5.5.1), whose [Apache 2.0 license and third-party terms](https://github.com/espressif/esp-idf/blob/v5.5.1/LICENSE) apply to the retained components. The reference build also links Espressif’s precompiled Wi-Fi, PHY, and BLE controller libraries. [Wi-Fi library terms](https://github.com/espressif/esp32-wifi-lib/blob/master/LICENSE) · [PHY library terms](https://github.com/espressif/esp-phy-lib/blob/master/LICENSE) · [BLE controller terms](https://github.com/espressif/esp32c3-bt-lib)
 
+The reference build uses Espressif’s ESP-IDF IPC implementation with a larger stack for the task on the Bluetooth controller core. [Source revision and changes](src/esp32_ipc/README.md) · [Apache 2.0 license](src/esp32_ipc/LICENSE)
+
 ## Hardware and trademarks
 
 The reference wiring is based on [AshrafHanyy’s ESP32-S3 handheld project](https://github.com/AshrafHanyy/GameBoy-ESP32-S3). Pocket Play is independently developed. Nintendo and Sega names identify the systems emulated by Pocket Play. Games and Doom IWADs are supplied separately by the player.
