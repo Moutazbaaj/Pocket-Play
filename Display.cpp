@@ -594,10 +594,10 @@ void Screen::drawGameFrame(const void *pixels, GbScale scale) {
   endWrite();
 }
 
-// Scale indexed pixels as they go to the panel, avoiding a second RGB565 framebuffer.
-void Screen::drawCartridgeFrame(const CartridgeFrame &frame, GbScale scale) {
-  if (!ready || (!frame.rgb565 && (!frame.pixels || !frame.palette)) || frame.width <= 0 || frame.height <= 0 ||
-      frame.width > width || frame.height > height || frame.pitch < frame.width) return;
+// Scale cartridge pixels as they go to the panel, avoiding a full-size scaled framebuffer.
+bool Screen::drawCartridgeFrame(const CartridgeFrame &frame, GbScale scale) {
+  if (!ready || gbaDma || (!frame.rgb565 && (!frame.pixels || !frame.palette)) || frame.width <= 0 || frame.height <= 0 ||
+      frame.width > width || frame.height > height || frame.pitch < frame.width) return false;
   int w = frame.width;
   int h = frame.height;
   if (scale == GbScale::Full) {
@@ -631,6 +631,20 @@ void Screen::drawCartridgeFrame(const CartridgeFrame &frame, GbScale scale) {
     previousHeight = h;
   }
 
+  if (frame.rgb565 && w == frame.width && h == frame.height) {
+    // Send native Genesis pixels directly. The 256-pixel mode has a padded pitch.
+    beginWrite();
+    setWindow(left, top, w, h);
+    if (frame.pitch == w) {
+      displaySpi.writePixels(frame.rgb565, w * h * sizeof(*frame.rgb565));
+    } else {
+      for (int y = 0; y < h; ++y) {
+        displaySpi.writePixels(frame.rgb565 + y * frame.pitch, w * sizeof(*frame.rgb565));
+      }
+    }
+    endWrite();
+    return true;
+  }
   // Precalculate the horizontal lookup once per frame. Consecutive duplicated rows
   // can reuse the converted RGB565 scanline directly.
   uint16_t sourceColumns[width];
@@ -657,6 +671,7 @@ void Screen::drawCartridgeFrame(const CartridgeFrame &frame, GbScale scale) {
     displaySpi.writePixels(line, w * sizeof(*line));
   }
   endWrite();
+  return true;
 }
 
 // Switch TFT SPI to ESP-IDF DMA with the DMA-specific clock limit and restore Arduino SPI on failure.

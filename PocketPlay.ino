@@ -70,8 +70,8 @@ constexpr uint8_t kBrightnessStep = 20;
 constexpr size_t kGbaAudioBlockSamples = 240 * 2;
 constexpr size_t kGbaAudioStartSamples = 3 * kGbaAudioBlockSamples;
 constexpr int64_t kFrameUs = 16743;
-constexpr int64_t kGbaAutoFrameDebtUs = 1500;
-constexpr int64_t kGbaStatsWindowUs = 3000000;
+constexpr int64_t kAutoFrameDebtUs = 1500;
+constexpr int64_t kGameStatsWindowUs = 3000000;
 constexpr uint32_t kAutoSaveMs = 10000;
 constexpr uint32_t kBootSplashMinMs = 800;
 // The splash bar represents startup phases. Counts are local to the directory being indexed.
@@ -240,10 +240,11 @@ enum class View {
 };
 constexpr char kDoomBootKey[] = "doomNextBoot";
 unsigned doomSelection = 0;
-enum class SettingsPage { Root, Display, Sound, Emulation, Power, Connectivity, Wifi };
+enum class SettingsPage { Root, Display, Sound, Emulation, Power, Connectivity, Wifi, Genesis };
 enum class SettingsItem {
-  DisplayMenu, SoundMenu, EmulationMenu, PowerMenu, ConnectivityMenu, WifiMenu,
+  DisplayMenu, SoundMenu, EmulationMenu, PowerMenu, ConnectivityMenu, WifiMenu, GenesisMenu,
   Sound, Volume, Brightness, Theme, HomeStyle, GbDisplay, GbaDisplay, GbaFrameskip, GbaTransfer, TftClock,
+  GenesisDisplay, GenesisFrameskip,
   Sleep, AutoSleep, DeviceTools, Bluetooth, WifiName, WifiPassword, EnableOnRestart, RestartConsole, About, Back
 };
 enum class WifiField { None, Name, Password };
@@ -262,7 +263,11 @@ constexpr SettingsItem kSoundSettings[] = {
 };
 constexpr SettingsItem kEmulationSettings[] = {
   SettingsItem::GbDisplay, SettingsItem::GbaDisplay, SettingsItem::GbaFrameskip,
-  SettingsItem::GbaTransfer, SettingsItem::Back,
+  SettingsItem::GbaTransfer, SettingsItem::GenesisMenu, SettingsItem::Back,
+};
+constexpr SettingsItem kGenesisSettings[] = {
+  SettingsItem::GenesisDisplay, SettingsItem::GenesisFrameskip,
+  SettingsItem::Back,
 };
 constexpr SettingsItem kPowerSettings[] = {
   SettingsItem::Sleep, SettingsItem::AutoSleep, SettingsItem::Back,
@@ -287,8 +292,9 @@ constexpr SettingsMenu kSettingsMenus[] = {
   {"POWER", kPowerSettings, std::size(kPowerSettings)},
   {"CONNECTIVITY", kConnectivitySettings, std::size(kConnectivitySettings)},
   {"WI-FI", kWifiSettings, std::size(kWifiSettings)},
+  {"GENESIS", kGenesisSettings, std::size(kGenesisSettings)},
 };
-static_assert(std::size(kSettingsMenus) == size_t(SettingsPage::Wifi) + 1);
+static_assert(std::size(kSettingsMenus) == size_t(SettingsPage::Genesis) + 1);
 enum class ToolScreen { Menu, Buttons, Display, Speaker, Led, Battery };
 enum class MiniScreen { Menu, Puzzle, Timing, Snake };
 constexpr int kMiniGameCount = int(MiniScreen::Snake);
@@ -381,6 +387,8 @@ Screen::GbScale gbScale = Screen::GbScale::Full;
 bool gbaFullscreen = false;
 bool gbaDmaEnabled = true;
 uint8_t gbaFrameskipMode = 0;
+Screen::GbScale genesisScale = Screen::GbScale::Native;
+uint8_t genesisFrameskipMode = 0;
 // Editable and active copies are separate. A disabled profile inherits the global settings.
 struct GameProfile {
   bool enabled;
@@ -453,6 +461,7 @@ bool testExitHeld = false;
 uint32_t testExitPressedAt = 0;
 uint32_t toolReadingDrawnAt = 0;
 unsigned gbaSkipped = 0;
+unsigned genesisSkipped = 0;
 uint32_t lastSaveAttempt = 0;
 int64_t nextFrame = 0;
 uint16_t *framebuffer = nullptr;
@@ -467,9 +476,9 @@ constexpr size_t kIndexedPaletteBytes = 256 * sizeof(uint16_t);
 constexpr size_t kNativeCartridgeBytes = Screen::width * Screen::height * sizeof(uint16_t);
 bool presenterGbaFullscreen = false;
 Screen::GbScale presenterGbScale = Screen::GbScale::Native;
-std::atomic<uint32_t> gbaDisplayedFrames{0};  // Written by the active presenter.
+std::atomic<uint32_t> gameDisplayedFrames{0};  // Written by the active presenter.
 // Timing sums cover emulated frames in one serial-report window. Durations use microseconds.
-struct GbaPerfWindow {
+struct GamePerfWindow {
   int64_t startUs;
   int64_t coreUs;
   int64_t drawUs;
@@ -477,7 +486,7 @@ struct GbaPerfWindow {
   uint32_t drawn;
   uint32_t displayBusy;
   uint32_t displayedAtStart;
-} gbaPerf{};
+} gamePerf{};
 alignas(4) int16_t samples[2048];
 // GBA queues PCM in the same buffer that Gnuboy uses for its callback.
 size_t gbaAudioBegin = 0;
@@ -822,15 +831,16 @@ const char *gbaScaleName(bool fullscreen) {
   return fullscreen ? "FULL" : "NATIVE";
 }
 
-// Label the stored GBA frameskip mode for menus and serial diagnostics.
+// Label the frameskip mode for menus and serial diagnostics.
 const char *frameskipName(uint8_t mode) {
   constexpr const char *names[] = {"AUTO", "NONE", "LIGHT", "HIGH"};
   return names[mode];
 }
 
-// Resolve a GB/GBC scaling override against the global display setting.
+// Resolve the active game's display scale, honoring existing per-game profiles.
 Screen::GbScale gameGbScale() {
-  return currentGameProfile.enabled ? currentGameProfile.gbDisplay : gbScale;
+  if (currentGameProfile.enabled) return currentGameProfile.gbDisplay;
+  return activeCartridgeCore == &pocketGenesis ? genesisScale : gbScale;
 }
 
 // Resolve the active GBA game's full-screen override against the global setting.
@@ -877,6 +887,8 @@ void saveDeviceSettings() {
   settingsStore.putBool("gbafull", gbaFullscreen);
   settingsStore.putBool("gbadma", gbaDmaEnabled);
   settingsStore.putUChar("frameskip", gbaFrameskipMode);
+  settingsStore.putUChar("mdscale", uint8_t(genesisScale));
+  settingsStore.putUChar("mdskip", genesisFrameskipMode);
   settingsStore.putUChar("clock", tftClockOption);
 }
 
@@ -939,6 +951,11 @@ void loadDeviceSettings() {
   if (gbaFrameskipMode > 3) {
     gbaFrameskipMode = 0;
   }
+  scale = settingsStore.getUChar("mdscale", uint8_t(Screen::GbScale::Native));
+  genesisScale = scale <= uint8_t(Screen::GbScale::Full)
+                     ? static_cast<Screen::GbScale>(scale) : Screen::GbScale::Native;
+  genesisFrameskipMode = settingsStore.getUChar("mdskip", 0);
+  if (genesisFrameskipMode > 3) genesisFrameskipMode = 0;
   tftClockOption = settingsStore.getUChar("clock", clockOptionFor(kTftClockHz));
   if (tftClockOption >= kTftClockOptionCount) {
     tftClockOption = clockOptionFor(kTftClockHz);
@@ -983,10 +1000,10 @@ bool adjustDisplayBrightness(int direction) {
   return true;
 }
 
-// Wrap the global GB/GBC display mode forward or backward through the supported choices.
-void cycleGbScale(int direction) {
-  const int count = int(Screen::GbScale::Full) + 1;
-  gbScale = static_cast<Screen::GbScale>((int(gbScale) + direction + count) % count);
+// Wrap the display mode forward or backward through the supported choices.
+Screen::GbScale nextDisplayScale(Screen::GbScale scale, int direction) {
+  constexpr int count = int(Screen::GbScale::Full) + 1;
+  return static_cast<Screen::GbScale>((int(scale) + direction + count) % count);
 }
 
 // Adjust a setting and save the changed preference.
@@ -1012,7 +1029,7 @@ bool cycleSettingsValue(SettingsItem item, int direction) {
       return true;
     }
     case SettingsItem::GbDisplay:
-      cycleGbScale(direction);
+      gbScale = nextDisplayScale(gbScale, direction);
       break;
     case SettingsItem::GbaDisplay:
       gbaFullscreen = !gbaFullscreen;
@@ -1022,6 +1039,12 @@ bool cycleSettingsValue(SettingsItem item, int direction) {
       break;
     case SettingsItem::GbaTransfer:
       gbaDmaEnabled = !gbaDmaEnabled;
+      break;
+    case SettingsItem::GenesisDisplay:
+      genesisScale = nextDisplayScale(genesisScale, direction);
+      break;
+    case SettingsItem::GenesisFrameskip:
+      genesisFrameskipMode = (genesisFrameskipMode + direction + 4) % 4;
       break;
     case SettingsItem::TftClock:
       tftClockOption = (tftClockOption + direction + kTftClockOptionCount) % kTftClockOptionCount;
@@ -2906,15 +2929,18 @@ const char *settingsLabel(SettingsItem item) {
     case SettingsItem::PowerMenu: return "POWER";
     case SettingsItem::ConnectivityMenu: return "CONNECTIVITY";
     case SettingsItem::WifiMenu: return "WI-FI";
+    case SettingsItem::GenesisMenu: return "GENESIS";
     case SettingsItem::Sound: return "GAME SOUND";
     case SettingsItem::Volume: return "VOLUME";
     case SettingsItem::Brightness: return "DISPLAY BRIGHTNESS";
     case SettingsItem::HomeStyle: return "HOME STYLE";
     case SettingsItem::Theme: return "THEME";
-    case SettingsItem::GbDisplay: return "GB / NES / SEGA SIZE";
+    case SettingsItem::GbDisplay: return "GB / NES / SMS / GG";
     case SettingsItem::GbaDisplay: return "GBA DISPLAY";
     case SettingsItem::GbaFrameskip: return "GBA FRAMESKIP";
     case SettingsItem::GbaTransfer: return "GBA TRANSFER";
+    case SettingsItem::GenesisDisplay: return "DISPLAY SIZE";
+    case SettingsItem::GenesisFrameskip: return "FRAMESKIP";
     case SettingsItem::TftClock: return "TFT SPEED";
     case SettingsItem::Sleep: return "SLEEP CONSOLE";
     case SettingsItem::AutoSleep: return "AUTO SLEEP";
@@ -3033,6 +3059,12 @@ void drawSettings(bool listOnSerial = true, int previousSelection = -1) {
       case SettingsItem::GbaTransfer:
         snprintf(value, sizeof(value), "%s", gbaDmaEnabled ? "DMA" : "ARDUINO SPI");
         break;
+      case SettingsItem::GenesisDisplay:
+        snprintf(value, sizeof(value), "%s", gbScaleName(genesisScale));
+        break;
+      case SettingsItem::GenesisFrameskip:
+        snprintf(value, sizeof(value), "%s", frameskipName(genesisFrameskipMode));
+        break;
       case SettingsItem::TftClock:
         snprintf(value, sizeof(value), "%lu MHz",
                  static_cast<unsigned long>(kTftClockOptions[tftClockOption] / 1000000));
@@ -3054,6 +3086,7 @@ void drawSettings(bool listOnSerial = true, int previousSelection = -1) {
       case SettingsItem::DisplayMenu:
       case SettingsItem::SoundMenu:
       case SettingsItem::EmulationMenu:
+      case SettingsItem::GenesisMenu:
       case SettingsItem::PowerMenu:
       case SettingsItem::ConnectivityMenu:
       case SettingsItem::WifiMenu:
@@ -3784,7 +3817,8 @@ GameProfile readGameProfile(const String &path) {
     return {bool(values[1]), static_cast<Screen::GbScale>(values[2]), bool(values[3]),
             values[4], bool(values[5])};
   }
-  return {false, gbScale, gbaFullscreen, gbaFrameskipMode, soundEnabled};
+  const auto scale = systemForPath(path) == int(System::Genesis) ? genesisScale : gbScale;
+  return {false, scale, gbaFullscreen, gbaFrameskipMode, soundEnabled};
 }
 
 // Serialize a versioned per-game override beside its ROM.
@@ -3875,9 +3909,7 @@ void handleGameProfile(uint16_t pressed) {
       if (profileIsGba) {
         editedGameProfile.gbaFull = !editedGameProfile.gbaFull;
       } else {
-        constexpr int scales = int(Screen::GbScale::Full) + 1;
-        editedGameProfile.gbDisplay = static_cast<Screen::GbScale>(
-            (int(editedGameProfile.gbDisplay) + step + scales) % scales);
+        editedGameProfile.gbDisplay = nextDisplayScale(editedGameProfile.gbDisplay, step);
       }
       editedGameProfile.enabled = true;
     } else if (profileIsGba && profileSelection == 2) {
@@ -4555,16 +4587,23 @@ bool presentGbaFrame(const uint16_t *pixels, bool fullScreen) {
   if (!Screen::drawGbaFrame(pixels, fullScreen)) {
     return false;
   }
-  gbaDisplayedFrames.fetch_add(1, std::memory_order_relaxed);
+  gameDisplayedFrames.fetch_add(1, std::memory_order_relaxed);
   return true;
 }
 
-// Consume the copied frame on core 0 and release its buffer after the TFT transfer.
+// Present cartridge output and count completed RGB565 transfers for performance reports.
+void presentCartridgeFrame(const CartridgeFrame &frame, Screen::GbScale scale) {
+  if (Screen::drawCartridgeFrame(frame, scale) && frame.rgb565) {
+    gameDisplayedFrames.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+// Consume the submitted frame on core 0 and release its buffer after the TFT transfer.
 void videoPresenterTask(void *) {
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     if (presenterCartridgeFrame.pixels || presenterCartridgeFrame.rgb565) {
-      Screen::drawCartridgeFrame(presenterCartridgeFrame, presenterGbScale);
+      presentCartridgeFrame(presenterCartridgeFrame, presenterGbScale);
     } else if (presenterFrameIsGba) {
       presentGbaFrame(videoPresenterBuffer, presenterGbaFullscreen);
     } else {
@@ -4575,15 +4614,16 @@ void videoPresenterTask(void *) {
 }
 
 // Allocate the single shared staging buffer and start the pinned display task if needed.
-bool beginVideoPresenter(size_t frameBytes) {
+bool beginVideoPresenter(size_t frameBytes, bool genesis = false) {
   // Pausing keeps this game's buffer. Quitting releases it before switching
   // systems, so the next game can allocate exactly the size it needs.
   if (!videoPresenterBuffer) {
-    videoPresenterBuffer = static_cast<uint16_t *>(heap_caps_malloc(
-        frameBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    if (!videoPresenterBuffer) {
-      videoPresenterBuffer = static_cast<uint16_t *>(heap_caps_malloc(
-          frameBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (genesis) {
+      videoPresenterBuffer = static_cast<uint16_t *>(heap_caps_calloc(
+          1, frameBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    } else {
+      videoPresenterBuffer = static_cast<uint16_t *>(heap_caps_malloc_prefer(
+          frameBytes, 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     }
     if (!videoPresenterBuffer) {
       return false;
@@ -4623,7 +4663,7 @@ bool submitVideoFrame(const void *pixels) {
   return true;
 }
 
-// Copy a borrowed frame and any palette before the core reuses them.
+// Transfer Genesis framebuffer ownership or copy the output from other cartridge cores.
 bool submitCartridgeFrame(const CartridgeFrame &frame) {
   if ((!frame.rgb565 && (!frame.pixels || !frame.palette)) || frame.height <= 0 || frame.width <= 0 ||
       frame.pitch < frame.width) return false;
@@ -4631,7 +4671,10 @@ bool submitCartridgeFrame(const CartridgeFrame &frame) {
   if (pixels > (frame.rgb565 ? kNativeCartridgeBytes / sizeof(uint16_t) : kIndexedMaxPixelBytes) ||
       xSemaphoreTake(videoPresenterBufferAvailable, 0) != pdTRUE) return false;
   presenterCartridgeFrame = frame;
-  if (frame.rgb565) {
+  if (activeCartridgeCore == &pocketGenesis) {
+    // The semaphore guarantees that the old front buffer is free for rendering.
+    videoPresenterBuffer = pocketGenesisSwapVideoBuffer(videoPresenterBuffer);
+  } else if (frame.rgb565) {
     memcpy(videoPresenterBuffer, frame.rgb565, pixels * sizeof(uint16_t));
     presenterCartridgeFrame.rgb565 = videoPresenterBuffer;
   } else {
@@ -4657,7 +4700,7 @@ void presentFrame(void *pixels) {
   }
 }
 
-// Wait for an in-flight transfer and release the GBA display backend before drawing menus.
+// Wait for an in-flight transfer and release the GBA DMA backend before drawing menus.
 void stopVideoPresenter() {
   if (asyncVideo) {
     // Drain the display task before returning SPI2 to the launcher.
@@ -4703,8 +4746,24 @@ bool shouldDrawGbaFrame(int64_t frameDebt) {
   }
   // AUTO tolerates a tiny scheduling jitter. LIGHT and HIGH react as soon as
   // a deadline is missed, avoiding the long stutter caused by late skips.
-  const int64_t tolerance = gameFrameskipMode() == 0 ? kGbaAutoFrameDebtUs : 0;
+  const int64_t tolerance = gameFrameskipMode() == 0 ? kAutoFrameDebtUs : 0;
   return frameDebt <= tolerance || gbaSkipped >= gbaFrameskipLimit();
+}
+
+// Use adaptive skipping in Auto or a fixed cadence in Light and High.
+bool shouldDrawGenesisFrame(int64_t debtUs) {
+  switch (genesisFrameskipMode) {
+    case 0:  // AUTO
+      return genesisSkipped >= 1 ||
+             (debtUs <= kAutoFrameDebtUs &&
+              (!asyncVideo || uxSemaphoreGetCount(videoPresenterBufferAvailable) != 0));
+    case 2:  // LIGHT
+      return genesisSkipped >= 1;
+    case 3:  // HIGH
+      return genesisSkipped >= 3;
+    default:  // NONE
+      return true;
+  }
 }
 
 // Apply the shared volume gain in place to signed PCM samples using fixed-point scaling.
@@ -5796,30 +5855,40 @@ void queueGbaAudio() {
 }
 
 // Start a fresh performance sample window with the current displayed-frame counter.
-void resetGbaPerfWindow(int64_t now, uint32_t displayed) {
-  gbaPerf = {};
-  gbaPerf.startUs = now;
-  gbaPerf.displayedAtStart = displayed;
+void resetGamePerfWindow(int64_t now, uint32_t displayed) {
+  gamePerf = {};
+  gamePerf.startUs = now;
+  gamePerf.displayedAtStart = displayed;
 }
 
 // Report emulation and presentation FPS, core timings, and presenter contention to serial.
-void reportGbaPerf() {
+void reportGamePerf(const char *system) {
   const int64_t now = esp_timer_get_time();
-  const int64_t elapsed = now - gbaPerf.startUs;
-  if (elapsed < kGbaStatsWindowUs) {
+  const int64_t elapsed = now - gamePerf.startUs;
+  if (elapsed < kGameStatsWindowUs) {
     return;
   }
-  const uint32_t displayed = gbaDisplayedFrames.load(std::memory_order_relaxed);
+  const uint32_t displayed = gameDisplayedFrames.load(std::memory_order_relaxed);
   const double fpsFactor = 1000000.0 / elapsed;
-  const uint32_t skipped = gbaPerf.emulated - gbaPerf.drawn;
-  const double drawMs = gbaPerf.drawn ? gbaPerf.drawUs / (1000.0 * gbaPerf.drawn) : 0;
-  const double skipMs = skipped ? (gbaPerf.coreUs - gbaPerf.drawUs) / (1000.0 * skipped) : 0;
-  Serial.printf("GBA: %.1f emulated FPS | %.1f display FPS | core %.1f ms/frame | draw %.1f ms | skip %.1f ms | display busy %u/%u\n",
-                gbaPerf.emulated * fpsFactor,
-                (displayed - gbaPerf.displayedAtStart) * fpsFactor,
-                gbaPerf.coreUs / (1000.0 * gbaPerf.emulated),
-                drawMs, skipMs, unsigned(gbaPerf.displayBusy), unsigned(gbaPerf.drawn));
-  resetGbaPerfWindow(now, displayed);
+  const uint32_t skipped = gamePerf.emulated - gamePerf.drawn;
+  const double drawMs = gamePerf.drawn ? gamePerf.drawUs / (1000.0 * gamePerf.drawn) : 0;
+  const double skipMs = skipped ? (gamePerf.coreUs - gamePerf.drawUs) / (1000.0 * skipped) : 0;
+  Serial.printf("%s: %.1f emulated FPS | %.1f display FPS | core %.1f ms/frame | draw %.1f ms | skip %.1f ms | display busy %u/%u\n",
+                system, gamePerf.emulated * fpsFactor,
+                (displayed - gamePerf.displayedAtStart) * fpsFactor,
+                gamePerf.coreUs / (1000.0 * gamePerf.emulated),
+                drawMs, skipMs, unsigned(gamePerf.displayBusy), unsigned(gamePerf.drawn));
+  resetGamePerfWindow(now, displayed);
+}
+
+// Measure the core's execution separately from audio and screen transfer.
+void recordGameFrame(bool draw, int64_t coreUs) {
+  gamePerf.coreUs += coreUs;
+  ++gamePerf.emulated;
+  if (draw) {
+    gamePerf.drawUs += coreUs;
+    ++gamePerf.drawn;
+  }
 }
 
 // Restore the game display and audio pipelines and restart the emulator frame deadline.
@@ -5829,7 +5898,16 @@ void resumeGame() {
     // Latch a lit color before handing the TFT bus to gameplay.
     applyFlashlightLed(millis(), true);
   }
-  if (activeCartridgeCore) {
+  if (activeCartridgeCore == &pocketGenesis) {
+    if (!beginVideoPresenter(kNativeCartridgeBytes, true)) {
+      Serial.println("Genesis async video unavailable; using synchronous display.");
+    }
+    Serial.printf("Genesis settings: CPU %u MHz | TFT %u MHz | %s | frameskip %s | sound %s | Arduino SPI\n",
+                  unsigned(ESP.getCpuFreqMHz()), unsigned(Screen::clockHz() / 1000000),
+                  gbScaleName(gameGbScale()), frameskipName(genesisFrameskipMode),
+                  gameSoundEnabled() && audioReady ? "ON" : "OFF");
+    resetGamePerfWindow(esp_timer_get_time(), gameDisplayedFrames.load(std::memory_order_relaxed));
+  } else if (activeCartridgeCore) {
     beginVideoPresenter(activeCartridgeCore->frame().rgb565 ? kNativeCartridgeBytes
                                                            : kIndexedMaxPixelBytes + kIndexedPaletteBytes);
   } else if (gameIsGba) {
@@ -5843,12 +5921,13 @@ void resumeGame() {
                   gbaScaleName(gameGbaFullscreen()), frameskipName(gameFrameskipMode()),
                   gameSoundEnabled() && audioReady ? "ON" : "OFF",
                   displayDma ? "DMA" : "Arduino SPI");
-    resetGbaPerfWindow(esp_timer_get_time(), gbaDisplayedFrames.load(std::memory_order_relaxed));
+    resetGamePerfWindow(esp_timer_get_time(), gameDisplayedFrames.load(std::memory_order_relaxed));
   } else if (gameGbScale() != Screen::GbScale::Native && !beginVideoPresenter(kGbFrameBytes)) {
     Serial.println("GB/GBC async video unavailable. Using synchronous display.");
   }
   nextFrame = esp_timer_get_time();
   gbaSkipped = 0;
+  genesisSkipped = 3;  // Render the first frame in every mode.
   view = View::Playing;
 }
 
@@ -6060,6 +6139,11 @@ void sleepConsole(bool resumeGameOnWake) {
 void backFromSettings() {
   if (settingsPage == SettingsPage::Root) {
     closeSettings();
+  } else if (settingsPage == SettingsPage::Genesis) {
+    settingsPage = SettingsPage::Emulation;
+    settingsSelection = std::find(std::begin(kEmulationSettings), std::end(kEmulationSettings),
+                                  SettingsItem::GenesisMenu) - std::begin(kEmulationSettings);
+    drawSettings();
   } else if (settingsPage == SettingsPage::Wifi) {
     settingsPage = SettingsPage::Connectivity;
     settingsSelection = 1;  // Wi-Fi row
@@ -6103,6 +6187,9 @@ void handleSettings(uint16_t pressed) {
       break;
     case SettingsItem::EmulationMenu:
       if (enter) openSettingsPage(SettingsPage::Emulation);
+      break;
+    case SettingsItem::GenesisMenu:
+      if (enter) openSettingsPage(SettingsPage::Genesis);
       break;
     case SettingsItem::PowerMenu:
       if (enter) openSettingsPage(SettingsPage::Power);
@@ -6381,9 +6468,7 @@ void applyPauseChoice(PauseItem item, int direction, bool activate) {
         if (gameIsGba) {
           updated.gbaFull = !updated.gbaFull;
         } else {
-          constexpr int count = int(Screen::GbScale::Full) + 1;
-          updated.gbDisplay = static_cast<Screen::GbScale>(
-              (int(updated.gbDisplay) + direction + count) % count);
+          updated.gbDisplay = nextDisplayScale(updated.gbDisplay, direction);
         }
         if (!writeGameProfile(currentGames()[currentGameSelection()], updated)) {
           showStatus("Could not save game profile.");
@@ -6392,7 +6477,8 @@ void applyPauseChoice(PauseItem item, int direction, bool activate) {
         currentGameProfile = updated;
       } else {
         if (gameIsGba) gbaFullscreen = !gbaFullscreen;
-        else cycleGbScale(direction);
+        else if (activeCartridgeCore == &pocketGenesis) genesisScale = nextDisplayScale(genesisScale, direction);
+        else gbScale = nextDisplayScale(gbScale, direction);
         saveDeviceSettings();
       }
       if (activate) resumeGame();
@@ -7008,6 +7094,7 @@ void loop() {
       const int64_t frameUs = !activeCartridgeCore ? kFrameUs
                              : activeCartridgeCore->framePeriodUs ? activeCartridgeCore->framePeriodUs()
                              : 1000000 / activeCartridgeCore->refreshRate();
+      const int64_t originalFrameDebt = frameDebt;
       const bool late = frameDebt > frameUs;
       if (frameDebt > 4 * frameUs) {
         nextFrame = tick;
@@ -7015,7 +7102,22 @@ void loop() {
       }
       nextFrame += frameUs;
       const uint16_t keys = held | serialHeld;
-      if (activeCartridgeCore) {
+      if (activeCartridgeCore == &pocketGenesis) {
+        const bool draw = shouldDrawGenesisFrame(originalFrameDebt);
+        const int64_t coreStart = esp_timer_get_time();
+        activeCartridgeCore->run(keys, draw);
+        recordGameFrame(draw, esp_timer_get_time() - coreStart);
+        genesisSkipped = draw ? 0 : genesisSkipped + 1;
+        if (draw) {
+          const CartridgeFrame frame = activeCartridgeCore->frame();
+          if (asyncVideo) gamePerf.displayBusy += !submitCartridgeFrame(frame);
+          else presentCartridgeFrame(frame, gameGbScale());
+        }
+        if (gameSoundEnabled() && audioReady) {
+          playAudio(samples, activeCartridgeCore->audio(samples, std::size(samples)));
+        }
+        reportGamePerf("Genesis");
+      } else if (activeCartridgeCore) {
         const bool draw = !late || gbaSkipped != 0;
         activeCartridgeCore->run(keys, draw);
         if (gameSoundEnabled() && audioReady) {
@@ -7040,18 +7142,12 @@ void loop() {
           showStatus("GBA ROM read failed. Check SD.");
           break;
         }
-        const int64_t coreUs = esp_timer_get_time() - coreStart;
-        gbaPerf.coreUs += coreUs;
-        ++gbaPerf.emulated;
-        if (draw) {
-          gbaPerf.drawUs += coreUs;
-          ++gbaPerf.drawn;
-        }
+        recordGameFrame(draw, esp_timer_get_time() - coreStart);
         if (draw) {
           bool frameSubmitted = true;
           if (asyncVideo) {
             frameSubmitted = submitVideoFrame(gbaCorePixels());
-            gbaPerf.displayBusy += !frameSubmitted;
+            gamePerf.displayBusy += !frameSubmitted;
           } else {
             frameSubmitted = presentGbaFrame(gbaCorePixels(), gameGbaFullscreen());
           }
@@ -7065,7 +7161,7 @@ void loop() {
           ++gbaSkipped;
         }
         queueGbaAudio();
-        reportGbaPerf();
+        reportGamePerf("GBA");
       } else {
         gnuboy_set_pad(keys & 0xFF);
         gnuboy_run(!late);

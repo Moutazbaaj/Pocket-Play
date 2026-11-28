@@ -74,6 +74,13 @@ static void runGenesis(uint16_t keys, bool draw) {
     md_run_frame(draw);
 }
 
+uint16_t *pocketGenesisSwapVideoBuffer(uint16_t *buffer) {
+    uint16_t *completed = video;
+    video = buffer;
+    md_set_framebuffer(buffer);
+    return completed;
+}
+
 static CartridgeFrame frameGenesis(void) {
     return (CartridgeFrame){NULL, NULL, md_width(), md_height(), MD_FB_STRIDE, video};
 }

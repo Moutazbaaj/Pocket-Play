@@ -38,6 +38,8 @@ extern const CartridgeCore pocketNes;
 extern const CartridgeCore pocketMasterSystem;
 extern const CartridgeCore pocketGameGear;
 extern const CartridgeCore pocketGenesis;
+// Exchange the Genesis render buffer for a free 320 by 240 RGB565 buffer.
+uint16_t *pocketGenesisSwapVideoBuffer(uint16_t *buffer);
 #define POCKET_GENESIS_MAX_ROM (6u * 1024u * 1024u)
 
 #ifdef __cplusplus

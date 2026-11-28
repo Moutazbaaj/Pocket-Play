@@ -38,6 +38,7 @@ void md_set_six_button(int port, int enabled);
 void md_set_audio_filter(int enabled);   /* console-style low-pass, default off */
 
 /* Video: RGB565, MD_FB_STRIDE per row, width x height visible. */
+void md_set_framebuffer(uint16_t *framebuffer);
 int md_width(void);
 int md_height(void);
 int md_is_pal(void);

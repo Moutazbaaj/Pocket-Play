@@ -782,6 +782,8 @@ void md_set_six_button(int port, int enabled)
         md.six[port] = enabled != 0;
 }
 
+void md_set_framebuffer(uint16_t *framebuffer) { vdp_fb = framebuffer; }
+
 int md_width(void) { return vdp_width(); }
 int md_height(void) { return vdp_fb_height(); }
 int md_is_pal(void) { return vdp.pal; }

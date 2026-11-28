@@ -56,8 +56,8 @@ void marqueeText(int x, int y, int w, const char *value, int offset, uint16_t fg
 void drawRgb565(const uint16_t *pixels, int x, int y, int w, int h);
 // Draw 160 by 144 RGB565 output from the GB and GBC core.
 void drawGameFrame(const void *pixels, GbScale scale);
-// Draw a palette-indexed cartridge frame. The adapter supplies a validated viewport.
-void drawCartridgeFrame(const CartridgeFrame &frame, GbScale scale);
+// Draw an indexed or RGB565 cartridge frame and report whether the transfer completed.
+bool drawCartridgeFrame(const CartridgeFrame &frame, GbScale scale);
 // Acquire the TFT bus for GBA DMA. Return true when DMA is active.
 bool beginGbaVideo();
 // Release GBA DMA and restore menu SPI.
