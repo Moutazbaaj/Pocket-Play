@@ -21,6 +21,7 @@ extern "C" {
 #include "host/util/util.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
+void ble_store_config_init(void);
 }
 
 namespace {
@@ -33,6 +34,7 @@ constexpr uint16_t kReportReference = 0x2908;
 constexpr uint16_t kClientConfig = 0x2902;
 constexpr uint16_t kNoLink = BLE_HS_CONN_HANDLE_NONE;
 constexpr uint32_t kScanMs = 6000;
+constexpr uint32_t kReconnectDelayMs = 750;
 constexpr uint32_t kPairMs = 25000;
 constexpr uint32_t kSyncTimeoutMs = 10000;
 constexpr char kEnabledKey[] = "bleCtl";
@@ -66,10 +68,13 @@ struct Request {
 Preferences *settings = nullptr;
 bool radioRunning = false;
 std::atomic<bool> radioWanted{false};
+std::atomic<bool> saveController{false};
 enum class HostSync { Pending, Ready, NoAddress };
 std::atomic<HostSync> hostSync{HostSync::Pending};
 bool awaitingStartup = false;
 uint32_t startupAt = 0;
+struct SavedController { ble_addr_t address; char name[25]; };
+SavedController lastController{};
 portMUX_TYPE uiLock = portMUX_INITIALIZER_UNLOCKED;
 Snapshot ui;
 std::array<ble_addr_t, maxDevices> candidates;
@@ -79,6 +84,10 @@ ControllerButtons buttons;
 // NimBLE owns these connection, discovery, and decoder fields on its host task.
 ble_npl_event commandEvent;
 ble_npl_callout pairTimeout;
+ble_npl_callout reconnectTimer;
+bool reconnectAllowed = false;
+bool reconnectScanning = false;
+bool automaticConnection = false;
 uint8_t localAddressType = 0;
 uint16_t link = kNoLink;
 bool connecting = false;
@@ -100,7 +109,47 @@ HidGamepad decoder;
 int gapEvent(ble_gap_event *event, void *arg);
 void nextChannel();
 void discoverHid();
-void connectController(const Request &request);
+void connectController(const Request &request, bool automatic);
+
+void scheduleReconnect() {
+  if (reconnectAllowed && lastController.name[0] && hostSync.load() == HostSync::Ready) {
+    ble_npl_callout_reset(&reconnectTimer, ble_npl_time_ms_to_ticks32(kReconnectDelayMs));
+  }
+}
+
+void scanForSavedController(ble_npl_event *) {
+  if (!reconnectAllowed || connecting || link != kNoLink || ble_gap_disc_active() ||
+      hostSync.load() != HostSync::Ready) return;
+  ble_gap_disc_params params{};
+  params.passive = 1;
+  params.filter_duplicates = 1;
+  reconnectScanning = ble_gap_disc(localAddressType, kScanMs, &params, gapEvent, nullptr) == 0;
+  if (!reconnectScanning) scheduleReconnect();
+}
+
+void stopReconnect() {
+  reconnectAllowed = false;
+  ble_npl_callout_stop(&reconnectTimer);
+  if (reconnectScanning) {
+    reconnectScanning = false;
+    ble_gap_disc_cancel();
+  }
+}
+
+// Reconnect only to the saved identity, including privacy-resolved advertisements.
+void matchSavedController(const ble_gap_disc_desc &peer) {
+  if (peer.event_type != BLE_HCI_ADV_RPT_EVTYPE_ADV_IND &&
+      peer.event_type != BLE_HCI_ADV_RPT_EVTYPE_DIR_IND) return;
+  ble_addr_t identity = peer.addr;
+  if (identity.type > BLE_ADDR_RANDOM_ID) return;
+  identity.type &= 1;
+  if (ble_addr_cmp(&identity, &lastController.address) != 0 || ble_gap_disc_cancel() != 0) return;
+  reconnectScanning = false;
+  Request request{};
+  request.address = identity;
+  memcpy(request.name, lastController.name, sizeof(request.name));
+  connectController(request, true);
+}
 
 void setStatus(State state, const char *text) {
   portENTER_CRITICAL(&uiLock);
@@ -125,6 +174,7 @@ void endLink() {
 }
 
 void pairingError(const char *text) {
+  stopReconnect();
   failed = true;
   setStatus(State::Error, text);
   endLink();
@@ -224,6 +274,19 @@ void nextChannel() {
   for (size_t i = 0; i < channelCount; ++i) {
     if (!channels[i].subscribed) continue;
     ble_npl_callout_stop(&pairTimeout);
+    ble_gap_conn_desc connection{};
+    if (!ble_gap_conn_find(link, &connection) && connection.sec_state.bonded) {
+      ble_addr_t identity = connection.peer_id_addr;
+      identity.type &= 1;
+      portENTER_CRITICAL(&uiLock);
+      const bool changed = ble_addr_cmp(&lastController.address, &identity) != 0 ||
+                           strcmp(lastController.name, peerName) != 0;
+      lastController.address = identity;
+      memcpy(lastController.name, peerName, sizeof(lastController.name));
+      portEXIT_CRITICAL(&uiLock);
+      if (changed || !automaticConnection) saveController.store(true, std::memory_order_release);
+      reconnectAllowed = true;
+    }
     acceptingInput = true;
     setStatus(State::Connected, "Controller connected");
     return;
@@ -337,8 +400,16 @@ void inputReport(const ble_gap_event &event) {
 
 int gapEvent(ble_gap_event *event, void *) {
   switch (event->type) {
-    case BLE_GAP_EVENT_DISC: addAdvertiser(event->disc); break;
+    case BLE_GAP_EVENT_DISC:
+      if (reconnectScanning) matchSavedController(event->disc);
+      else addAdvertiser(event->disc);
+      break;
     case BLE_GAP_EVENT_DISC_COMPLETE: {
+      if (reconnectScanning) {
+        reconnectScanning = false;
+        scheduleReconnect();
+        break;
+      }
       const auto now = status();
       if (now.state == State::Scanning) setStatus(State::Ready, now.count ? "Select a controller" : "No BLE controllers found");
       break;
@@ -348,17 +419,35 @@ int gapEvent(ble_gap_event *event, void *) {
       if (event->connect.status) {
         const bool cancelled = closing && !failed;
         closing = false;
-        if (cancelled) setStatus(State::Ready, "Pairing cancelled");
-        else if (!failed) pairingError("Could not connect");
+        if (cancelled) {
+          setStatus(State::Ready, "Pairing cancelled");
+        } else if (!failed && automaticConnection) {
+          ble_npl_callout_stop(&pairTimeout);
+          setStatus(State::Ready, "Waiting for saved controller");
+          scheduleReconnect();
+        } else if (!failed) {
+          pairingError("Could not connect");
+        }
       } else {
         link = event->connect.conn_handle;
         if (closing) {
           endLink();
         } else {
           ble_gap_conn_desc current{};
-          if (!ble_gap_conn_find(link, &current) && current.sec_state.encrypted) {
+          const bool found = ble_gap_conn_find(link, &current) == 0;
+          if (found && current.sec_state.encrypted) {
             encrypted();
           } else {
+            // Only a manual selection may establish a new bond.
+            if (automaticConnection) {
+              ble_store_key_sec key{};
+              key.peer_addr = current.peer_id_addr;
+              ble_store_value_sec stored{};
+              if (!found || ble_store_read_peer_sec(&key, &stored) != 0 || !stored.ltk_present) {
+                pairingError("Scan to pair the controller again");
+                break;
+              }
+            }
             const int result = ble_gap_security_initiate(link);
             if (result && result != BLE_HS_EALREADY) pairingError("Could not start pairing");
           }
@@ -372,19 +461,33 @@ int gapEvent(ble_gap_event *event, void *) {
           encrypted();
         } else if (result == BLE_HS_HCI_ERR(BLE_ERR_PINKEY_MISSING) && !securityRetried) {
           securityRetried = true;
-          if (ble_gap_security_initiate(link)) pairingError("Bluetooth pairing failed");
+          ble_gap_conn_desc current{};
+          if (automaticConnection || ble_gap_conn_find(link, &current) ||
+              ble_store_util_delete_peer(&current.peer_id_addr) || ble_gap_security_initiate(link)) {
+            pairingError("Scan to pair the controller again");
+          }
         } else {
           pairingError("Bluetooth pairing failed");
         }
       }
       break;
+    case BLE_GAP_EVENT_REPEAT_PAIRING: {
+      ble_gap_conn_desc current{};
+      if (!automaticConnection &&
+          !ble_gap_conn_find(event->repeat_pairing.conn_handle, &current) &&
+          !ble_store_util_delete_peer(&current.peer_id_addr)) return BLE_GAP_REPEAT_PAIRING_RETRY;
+      return BLE_GAP_REPEAT_PAIRING_IGNORE;
+    }
     case BLE_GAP_EVENT_DISCONNECT:
       if (event->disconnect.conn.conn_handle == link) {
         link = kNoLink;
         closing = acceptingInput = false;
         buttons.clear();
         ble_npl_callout_stop(&pairTimeout);
-        if (!failed) setStatus(State::Ready, "Controller disconnected");
+        if (!failed) {
+          setStatus(State::Ready, reconnectAllowed ? "Waiting for saved controller" : "Controller disconnected");
+          scheduleReconnect();
+        }
       }
       break;
     case BLE_GAP_EVENT_NOTIFY_RX: inputReport(*event); break;
@@ -399,6 +502,7 @@ void runCommand(ble_npl_event *) {
   pending.action = Command::None;
   portEXIT_CRITICAL(&uiLock);
   if (request.action == Command::Scan && link == kNoLink && !connecting) {
+    stopReconnect();
     portENTER_CRITICAL(&uiLock);
     ui.count = 0;
     portEXIT_CRITICAL(&uiLock);
@@ -410,9 +514,11 @@ void runCommand(ble_npl_event *) {
       setStatus(State::Error, "Could not scan for controllers");
     }
   } else if (request.action == Command::Pair && link == kNoLink && !connecting) {
+    stopReconnect();
     if (ble_gap_disc_active()) ble_gap_disc_cancel();
-    connectController(request);
+    connectController(request, false);
   } else if (request.action == Command::Disconnect) {
+    stopReconnect();
     if (ble_gap_disc_active()) {
       ble_gap_disc_cancel();
       setStatus(State::Ready, "Scan cancelled");
@@ -423,7 +529,8 @@ void runCommand(ble_npl_event *) {
   }
 }
 
-void connectController(const Request &request) {
+void connectController(const Request &request, bool automatic) {
+  automaticConnection = automatic;
   buttons.clear();
   failed = closing = securityReady = securityRetried = acceptingInput = false;
   memcpy(peerName, request.name, sizeof(peerName));
@@ -431,10 +538,16 @@ void connectController(const Request &request) {
   serviceStart = serviceEnd = reportMapHandle = 0;
   channelCount = mapLength = 0;
   openChannel = -1;
-  setStatus(State::Pairing, "Connecting and reading controls");
+  setStatus(State::Pairing, automatic ? "Reconnecting saved controller" : "Connecting and reading controls");
   connecting = ble_gap_connect(localAddressType, &request.address, 8000, nullptr, gapEvent, nullptr) == 0;
-  if (connecting) ble_npl_callout_reset(&pairTimeout, ble_npl_time_ms_to_ticks32(kPairMs));
-  else pairingError("Could not connect");
+  if (connecting) {
+    ble_npl_callout_reset(&pairTimeout, ble_npl_time_ms_to_ticks32(kPairMs));
+  } else if (automatic) {
+    setStatus(State::Ready, "Waiting for saved controller");
+    scheduleReconnect();
+  } else {
+    pairingError("Could not connect");
+  }
 }
 
 void hostReset(int) {
@@ -442,6 +555,8 @@ void hostReset(int) {
   link = kNoLink;
   connecting = closing = acceptingInput = false;
   ble_npl_callout_stop(&pairTimeout);
+  ble_npl_callout_stop(&reconnectTimer);
+  reconnectScanning = false;
   hostSync.store(HostSync::Pending);
   setStatus(State::Starting, "Restarting Bluetooth");
 }
@@ -451,8 +566,9 @@ void hostSynced() {
     hostSync.store(HostSync::NoAddress);
     return;
   }
-  setStatus(State::Ready, "Scan to pair a BLE controller");
+  setStatus(State::Ready, reconnectAllowed ? "Waiting for saved controller" : "Scan to pair a BLE controller");
   hostSync.store(HostSync::Ready);
+  scheduleReconnect();
 }
 
 void hostTask(void *) {
@@ -499,6 +615,8 @@ void startRadio(bool recovery) {
   Serial.println("Bluetooth: controller and NimBLE initialized");
   link = kNoLink;
   connecting = closing = failed = false;
+  reconnectScanning = automaticConnection = false;
+  reconnectAllowed = lastController.name[0] != 0;
   ble_hs_cfg.reset_cb = hostReset;
   ble_hs_cfg.sync_cb = hostSynced;
   ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
@@ -507,21 +625,26 @@ void startRadio(bool recovery) {
   ble_hs_cfg.sm_sc = 1;
   ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
   ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
-  // Some HID pads expect a bonding handshake. Keep the connection encrypted
-  // while discarding bond records so each manual connection pairs afresh.
-  ble_hs_cfg.store_read_cb = [](int, const ble_store_key *, ble_store_value *) { return BLE_HS_ENOENT; };
-  ble_hs_cfg.store_write_cb = [](int, const ble_store_value *) { return 0; };
-  ble_hs_cfg.store_delete_cb = [](int, const ble_store_key *) { return BLE_HS_ENOENT; };
-  ble_hs_cfg.store_status_cb = nullptr;
+  ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+  ble_store_config_init();
   const int timerResult = ble_npl_callout_init(&pairTimeout, nimble_port_get_dflt_eventq(), timedOut, nullptr);
   if (timerResult) {
     nimble_port_deinit();
     startError("Could not start pairing timer", timerResult);
     return;
   }
+  const int reconnectResult = ble_npl_callout_init(&reconnectTimer, nimble_port_get_dflt_eventq(),
+                                                  scanForSavedController, nullptr);
+  if (reconnectResult) {
+    ble_npl_callout_deinit(&pairTimeout);
+    nimble_port_deinit();
+    startError("Could not start reconnect timer", reconnectResult);
+    return;
+  }
   ble_npl_event_init(&commandEvent, runCommand, nullptr);
   const int taskResult = esp_nimble_enable(reinterpret_cast<void *>(hostTask));
   if (taskResult != ESP_OK) {
+    ble_npl_callout_deinit(&reconnectTimer);
     ble_npl_callout_deinit(&pairTimeout);
     ble_npl_event_deinit(&commandEvent);
     nimble_port_deinit();
@@ -541,6 +664,8 @@ bool stopRadio() {
       return false;
     }
     ble_npl_callout_stop(&pairTimeout);
+    ble_npl_callout_stop(&reconnectTimer);
+    ble_npl_callout_deinit(&reconnectTimer);
     ble_npl_callout_deinit(&pairTimeout);
     ble_npl_event_deinit(&commandEvent);
     nimble_port_deinit();
@@ -564,7 +689,7 @@ void serviceStartup() {
     if (settings->putUChar(kBootAttemptKey, uint8_t(BootAttempt::Idle)) != 1) {
       Serial.println("Bluetooth: could not clear the startup marker");
     }
-    Serial.println("Bluetooth: startup complete; scan for a controller");
+    Serial.println("Bluetooth: startup complete");
   } else if (awaitingStartup && (synced == HostSync::NoAddress || millis() - startupAt >= kSyncTimeoutMs)) {
     const char *reason = synced == HostSync::NoAddress ? "Bluetooth address unavailable"
                                                      : "Bluetooth startup timed out";
@@ -598,6 +723,11 @@ bool send(Command action, int index = -1) {
 
 void BluetoothControls::begin(Preferences &preferences, bool disableAtBoot) {
   settings = &preferences;
+  if (settings->getBytesLength("blePeer") == sizeof(lastController)) {
+    settings->getBytes("blePeer", &lastController, sizeof(lastController));
+    lastController.name[sizeof(lastController.name) - 1] = 0;
+    if (lastController.address.type > BLE_ADDR_RANDOM) lastController = {};
+  }
   const bool wasEnabled = settings->getBool(kEnabledKey, false);
   if (disableAtBoot) {
     if (wasEnabled && !settings->putBool(kEnabledKey, false)) {
@@ -661,7 +791,16 @@ void BluetoothControls::suspend() {
 }
 void BluetoothControls::resume() { if (radioWanted.load()) startRadio(false); }
 
-void BluetoothControls::service() { serviceStartup(); }
+void BluetoothControls::service() {
+  serviceStartup();
+  if (!settings || !saveController.exchange(false, std::memory_order_acq_rel)) return;
+  portENTER_CRITICAL(&uiLock);
+  const auto peer = lastController;
+  portEXIT_CRITICAL(&uiLock);
+  if (settings->putBytes("blePeer", &peer, sizeof(peer)) != sizeof(peer)) {
+    Serial.println("Bluetooth: could not save paired controller");
+  }
+}
 
 bool BluetoothControls::scan() { return send(Command::Scan); }
 bool BluetoothControls::pair(int index) { return send(Command::Pair, index); }
