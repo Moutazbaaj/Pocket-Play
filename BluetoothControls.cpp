@@ -21,7 +21,6 @@ extern "C" {
 #include "host/util/util.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
-void ble_store_config_init(void);
 }
 
 namespace {
@@ -38,7 +37,8 @@ constexpr uint32_t kPairMs = 25000;
 constexpr uint32_t kSyncTimeoutMs = 10000;
 constexpr char kEnabledKey[] = "bleCtl";
 constexpr char kBootAttemptKey[] = "bleBoot";
-enum class BootAttempt : uint8_t { Idle, InProgress, Retry };
+// The first three values are shared with older firmware's persisted settings.
+enum class BootAttempt : uint8_t { Idle, InProgress, Retry, RecoveryInProgress };
 #if CONFIG_IDF_TARGET_ESP32S3
 // The S3 controller requests a 32 KiB block after earlier allocations.
 // Allow headroom for those allocations and the remaining host/controller startup.
@@ -66,16 +66,10 @@ struct Request {
 Preferences *settings = nullptr;
 bool radioRunning = false;
 std::atomic<bool> radioWanted{false};
-std::atomic<bool> saveController{false};
 enum class HostSync { Pending, Ready, NoAddress };
 std::atomic<HostSync> hostSync{HostSync::Pending};
 bool awaitingStartup = false;
-std::atomic<bool> reconnectPending{false};
-bool skipStartupReconnect = false;
 uint32_t startupAt = 0;
-struct SavedController { ble_addr_t address; char name[25]; };
-SavedController lastController{};
-SavedController discoveredBond{};
 portMUX_TYPE uiLock = portMUX_INITIALIZER_UNLOCKED;
 Snapshot ui;
 std::array<ble_addr_t, maxDevices> candidates;
@@ -230,15 +224,6 @@ void nextChannel() {
   for (size_t i = 0; i < channelCount; ++i) {
     if (!channels[i].subscribed) continue;
     ble_npl_callout_stop(&pairTimeout);
-    ble_gap_conn_desc connection{};
-    if (!ble_gap_conn_find(link, &connection) && connection.sec_state.bonded) {
-      portENTER_CRITICAL(&uiLock);
-      discoveredBond.address = connection.peer_id_addr;
-      discoveredBond.address.type &= 1;
-      memcpy(discoveredBond.name, peerName, sizeof(peerName));
-      portEXIT_CRITICAL(&uiLock);
-      saveController.store(true, std::memory_order_release);
-    }
     acceptingInput = true;
     setStatus(State::Connected, "Controller connected");
     return;
@@ -467,7 +452,6 @@ void hostSynced() {
     return;
   }
   setStatus(State::Ready, "Scan to pair a BLE controller");
-  reconnectPending.store(true);
   hostSync.store(HostSync::Ready);
 }
 
@@ -483,14 +467,15 @@ void startError(const char *message, int error = 0) {
   else Serial.printf("Bluetooth: %s\n", message);
 }
 
-void startRadio() {
+void startRadio(bool recovery) {
   if (radioRunning) return;
-  // Keep the user's setting separate from the marker that prevents a boot loop.
-  if (!settings || settings->putUChar(kBootAttemptKey, uint8_t(BootAttempt::InProgress)) != 1) {
+  // An interrupted normal start gets one retry. An interrupted
+  // recovery start requires the user to schedule another attempt.
+  const auto marker = recovery ? BootAttempt::RecoveryInProgress : BootAttempt::InProgress;
+  if (!settings || settings->putUChar(kBootAttemptKey, uint8_t(marker)) != 1) {
     startError("Could not save Bluetooth recovery");
     return;
   }
-  reconnectPending.store(false);
   hostSync.store(HostSync::Pending);
   startupAt = millis();
   setStatus(State::Starting, "Starting Bluetooth");
@@ -511,18 +496,23 @@ void startRadio() {
                initResult);
     return;
   }
+  Serial.println("Bluetooth: controller and NimBLE initialized");
   link = kNoLink;
   connecting = closing = failed = false;
   ble_hs_cfg.reset_cb = hostReset;
   ble_hs_cfg.sync_cb = hostSynced;
-  ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
   ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
   ble_hs_cfg.sm_bonding = 1;
   ble_hs_cfg.sm_mitm = 0;
   ble_hs_cfg.sm_sc = 1;
   ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
   ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
-  ble_store_config_init();
+  // Some HID pads expect a bonding handshake. Keep the connection encrypted
+  // while discarding bond records so each manual connection pairs afresh.
+  ble_hs_cfg.store_read_cb = [](int, const ble_store_key *, ble_store_value *) { return BLE_HS_ENOENT; };
+  ble_hs_cfg.store_write_cb = [](int, const ble_store_value *) { return 0; };
+  ble_hs_cfg.store_delete_cb = [](int, const ble_store_key *) { return BLE_HS_ENOENT; };
+  ble_hs_cfg.store_status_cb = nullptr;
   const int timerResult = ble_npl_callout_init(&pairTimeout, nimble_port_get_dflt_eventq(), timedOut, nullptr);
   if (timerResult) {
     nimble_port_deinit();
@@ -565,44 +555,16 @@ bool stopRadio() {
   return true;
 }
 
-// Queue the saved pad from the launcher loop, after the boot peripherals are ready.
-bool requestReconnect() {
-  bool queued = false;
-  portENTER_CRITICAL(&uiLock);
-  if (lastController.name[0] && ui.state == State::Ready && pending.action == Command::None) {
-    pending.action = Command::Pair;
-    pending.address = lastController.address;
-    memcpy(pending.name, lastController.name, sizeof(pending.name));
-    ui.state = State::Pairing;
-    ui.status = "Reconnecting last controller";
-    ++ui.revision;
-    queued = true;
-  }
-  portEXIT_CRITICAL(&uiLock);
-  if (queued) ble_npl_eventq_put(nimble_port_get_dflt_eventq(), &commandEvent);
-  return queued;
-}
-
 void serviceStartup() {
   if (!radioRunning) return;
   const auto synced = hostSync.load();
   if (synced == HostSync::Ready) {
-    if (reconnectPending.exchange(false)) {
-      const bool skipReconnect = skipStartupReconnect;
-      skipStartupReconnect = false;
-      if (!skipReconnect && requestReconnect()) return;
-    }
     if (!awaitingStartup) return;
-    // Keep recovery armed until any automatic reconnect has settled.
-    portENTER_CRITICAL(&uiLock);
-    const bool reconnecting = ui.state == State::Pairing || ui.state == State::Starting;
-    portEXIT_CRITICAL(&uiLock);
-    if (reconnecting) return;
     awaitingStartup = false;
     if (settings->putUChar(kBootAttemptKey, uint8_t(BootAttempt::Idle)) != 1) {
       Serial.println("Bluetooth: could not clear the startup marker");
     }
-    Serial.println("Bluetooth: startup complete");
+    Serial.println("Bluetooth: startup complete; scan for a controller");
   } else if (awaitingStartup && (synced == HostSync::NoAddress || millis() - startupAt >= kSyncTimeoutMs)) {
     const char *reason = synced == HostSync::NoAddress ? "Bluetooth address unavailable"
                                                      : "Bluetooth startup timed out";
@@ -636,11 +598,6 @@ bool send(Command action, int index = -1) {
 
 void BluetoothControls::begin(Preferences &preferences, bool disableAtBoot) {
   settings = &preferences;
-  if (settings->getBytesLength("blePeer") == sizeof(lastController)) {
-    settings->getBytes("blePeer", &lastController, sizeof(lastController));
-    lastController.name[sizeof(lastController.name) - 1] = 0;
-    if (lastController.address.type > BLE_ADDR_RANDOM) lastController = {};
-  }
   const bool wasEnabled = settings->getBool(kEnabledKey, false);
   if (disableAtBoot) {
     if (wasEnabled && !settings->putBool(kEnabledKey, false)) {
@@ -653,13 +610,14 @@ void BluetoothControls::begin(Preferences &preferences, bool disableAtBoot) {
   }
   if (!wasEnabled) return;
   const auto attempt = static_cast<BootAttempt>(settings->getUChar(kBootAttemptKey, uint8_t(BootAttempt::Idle)));
-  if (attempt == BootAttempt::InProgress) {
-    startError("Previous Bluetooth start failed");
+  if (attempt == BootAttempt::RecoveryInProgress) {
+    startError("Bluetooth retry failed. Re-enable.");
     return;
   }
-  skipStartupReconnect = attempt == BootAttempt::Retry;
+  const bool recovery = attempt == BootAttempt::InProgress || attempt == BootAttempt::Retry;
+  if (recovery) Serial.println("Bluetooth: retrying interrupted startup");
   radioWanted.store(true);
-  resume();
+  startRadio(recovery);
 #if CONFIG_SPIRAM_USE_MALLOC && CONFIG_IDF_TARGET_ESP32S3
   if (radioRunning && psramFound()) {
     // Malloc and realloc normally put short ROM paths and other small objects
@@ -678,9 +636,9 @@ void BluetoothControls::enableOnRestart() {
     return;
   }
   const auto attempt = static_cast<BootAttempt>(settings->getUChar(kBootAttemptKey, uint8_t(BootAttempt::Idle)));
-  // A retry can start the radio without automatically reopening a failed connection.
-  if ((attempt == BootAttempt::InProgress &&
-       settings->putUChar(kBootAttemptKey, uint8_t(BootAttempt::Retry)) != 1) ||
+  // An explicit retry can recover from either interrupted startup stage.
+  const bool interrupted = attempt == BootAttempt::InProgress || attempt == BootAttempt::RecoveryInProgress;
+  if ((interrupted && settings->putUChar(kBootAttemptKey, uint8_t(BootAttempt::Retry)) != 1) ||
       !settings->putBool(kEnabledKey, true)) {
     startError("Could not save Bluetooth setting");
     return;
@@ -701,19 +659,10 @@ void BluetoothControls::disable() {
 void BluetoothControls::suspend() {
   if (radioRunning) stopRadio();
 }
-void BluetoothControls::resume() { if (radioWanted.load()) startRadio(); }
+void BluetoothControls::resume() { if (radioWanted.load()) startRadio(false); }
 
-void BluetoothControls::service() {
-  serviceStartup();
-  if (!settings || !saveController.exchange(false, std::memory_order_acq_rel)) return;
-  portENTER_CRITICAL(&uiLock);
-  const auto peer = discoveredBond;
-  const bool changed = ble_addr_cmp(&peer.address, &lastController.address) != 0 ||
-                       strcmp(peer.name, lastController.name) != 0;
-  lastController = peer;
-  portEXIT_CRITICAL(&uiLock);
-  if (changed) settings->putBytes("blePeer", &peer, sizeof(peer));
-}
+void BluetoothControls::service() { serviceStartup(); }
+
 bool BluetoothControls::scan() { return send(Command::Scan); }
 bool BluetoothControls::pair(int index) { return send(Command::Pair, index); }
 bool BluetoothControls::disconnect() { return send(Command::Disconnect); }
