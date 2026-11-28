@@ -240,15 +240,25 @@ enum class View {
 };
 constexpr char kDoomBootKey[] = "doomNextBoot";
 unsigned doomSelection = 0;
-enum class SettingsPage { Root, Display, Sound, Emulation, Power, Connectivity, Wifi, Genesis };
+enum class SettingsPage {
+  Root, Display, Sound, Emulation, Power, Connectivity, Wifi,
+  GameBoy, GameBoyColor, GameBoyAdvance, Nes, MasterSystem, GameGear, Genesis,
+};
 enum class SettingsItem {
-  DisplayMenu, SoundMenu, EmulationMenu, PowerMenu, ConnectivityMenu, WifiMenu, GenesisMenu,
-  Sound, Volume, Brightness, Theme, HomeStyle, GbDisplay, GbaDisplay, GbaFrameskip, GbaTransfer, TftClock,
-  GenesisDisplay, GenesisFrameskip,
+  DisplayMenu, SoundMenu, EmulationMenu, PowerMenu, ConnectivityMenu, WifiMenu,
+  GameBoyMenu, GameBoyColorMenu, GameBoyAdvanceMenu, NesMenu, MasterSystemMenu, GameGearMenu, GenesisMenu,
+  Sound, Volume, Brightness, Theme, HomeStyle, EmulatorDisplay, GbaDisplay, GbaFrameskip, GbaTransfer, TftClock,
+  GenesisFrameskip,
   Sleep, AutoSleep, DeviceTools, Bluetooth, WifiName, WifiPassword, EnableOnRestart, RestartConsole, About, Back
 };
 enum class WifiField { None, Name, Password };
 WifiField wifiField = WifiField::None;
+
+// Emulator page and row IDs follow the same order as the ROM libraries.
+constexpr int kFirstEmulatorPage = int(SettingsPage::GameBoy);
+constexpr int kFirstEmulatorItem = int(SettingsItem::GameBoyMenu);
+static_assert(int(SettingsPage::Genesis) - kFirstEmulatorPage + 1 == kSystemCount);
+static_assert(int(SettingsItem::GenesisMenu) - kFirstEmulatorItem + 1 == kSystemCount);
 
 // Keep navigation IDs independent of the rows visible on each settings page.
 constexpr SettingsItem kRootSettings[] = {
@@ -262,12 +272,16 @@ constexpr SettingsItem kSoundSettings[] = {
   SettingsItem::Sound, SettingsItem::Volume, SettingsItem::Back,
 };
 constexpr SettingsItem kEmulationSettings[] = {
-  SettingsItem::GbDisplay, SettingsItem::GbaDisplay, SettingsItem::GbaFrameskip,
-  SettingsItem::GbaTransfer, SettingsItem::GenesisMenu, SettingsItem::Back,
+  SettingsItem::GameBoyMenu, SettingsItem::GameBoyColorMenu, SettingsItem::GameBoyAdvanceMenu,
+  SettingsItem::NesMenu, SettingsItem::MasterSystemMenu, SettingsItem::GameGearMenu,
+  SettingsItem::GenesisMenu, SettingsItem::Back,
+};
+constexpr SettingsItem kClassicEmulatorSettings[] = {SettingsItem::EmulatorDisplay, SettingsItem::Back};
+constexpr SettingsItem kGbaSettings[] = {
+  SettingsItem::GbaDisplay, SettingsItem::GbaFrameskip, SettingsItem::GbaTransfer, SettingsItem::Back,
 };
 constexpr SettingsItem kGenesisSettings[] = {
-  SettingsItem::GenesisDisplay, SettingsItem::GenesisFrameskip,
-  SettingsItem::Back,
+  SettingsItem::EmulatorDisplay, SettingsItem::GenesisFrameskip, SettingsItem::Back,
 };
 constexpr SettingsItem kPowerSettings[] = {
   SettingsItem::Sleep, SettingsItem::AutoSleep, SettingsItem::Back,
@@ -292,9 +306,22 @@ constexpr SettingsMenu kSettingsMenus[] = {
   {"POWER", kPowerSettings, std::size(kPowerSettings)},
   {"CONNECTIVITY", kConnectivitySettings, std::size(kConnectivitySettings)},
   {"WI-FI", kWifiSettings, std::size(kWifiSettings)},
-  {"GENESIS", kGenesisSettings, std::size(kGenesisSettings)},
+  {kSystems[int(System::GameBoy)].title, kClassicEmulatorSettings, std::size(kClassicEmulatorSettings)},
+  {kSystems[int(System::GameBoyColor)].title, kClassicEmulatorSettings, std::size(kClassicEmulatorSettings)},
+  {kSystems[int(System::GameBoyAdvance)].title, kGbaSettings, std::size(kGbaSettings)},
+  {kSystems[int(System::Nes)].title, kClassicEmulatorSettings, std::size(kClassicEmulatorSettings)},
+  {kSystems[int(System::MasterSystem)].title, kClassicEmulatorSettings, std::size(kClassicEmulatorSettings)},
+  {kSystems[int(System::GameGear)].title, kClassicEmulatorSettings, std::size(kClassicEmulatorSettings)},
+  {kSystems[int(System::Genesis)].title, kGenesisSettings, std::size(kGenesisSettings)},
 };
 static_assert(std::size(kSettingsMenus) == size_t(SettingsPage::Genesis) + 1);
+static_assert([] {
+  for (size_t i = 0; i < kSystemCount; ++i) {
+    if (int(kEmulationSettings[i]) != kFirstEmulatorItem + int(i) ||
+        kSettingsMenus[kFirstEmulatorPage + i].title != kSystems[i].title) return false;
+  }
+  return true;
+}());
 enum class ToolScreen { Menu, Buttons, Display, Speaker, Led, Battery };
 enum class MiniScreen { Menu, Puzzle, Timing, Snake };
 constexpr int kMiniGameCount = int(MiniScreen::Snake);
@@ -382,12 +409,16 @@ SleepChord sleepChord;
 uint8_t autoSleepOption = 0;
 uint32_t lastConsoleActivityAt = 0;
 bool sdReady = false;
-Screen::GbScale gbScale = Screen::GbScale::Full;
+// Keep the GB and Genesis keys so existing values survive a firmware update.
+constexpr const char *kDisplayScaleKeys[] = {
+  "gbscale", "gbcscale", nullptr, "nesscale", "smsscale", "ggscale", "mdscale",
+};
+static_assert(std::size(kDisplayScaleKeys) == kSystemCount);
+std::array<Screen::GbScale, kSystemCount> emulatorScales{};
 // Native GBA output is faster. Full-screen scaling can be enabled from Settings.
 bool gbaFullscreen = false;
 bool gbaDmaEnabled = true;
 uint8_t gbaFrameskipMode = 0;
-Screen::GbScale genesisScale = Screen::GbScale::Native;
 uint8_t genesisFrameskipMode = 0;
 // Editable and active copies are separate. A disabled profile inherits the global settings.
 struct GameProfile {
@@ -840,7 +871,7 @@ const char *frameskipName(uint8_t mode) {
 // Resolve the active game's display scale, honoring existing per-game profiles.
 Screen::GbScale gameGbScale() {
   if (currentGameProfile.enabled) return currentGameProfile.gbDisplay;
-  return activeCartridgeCore == &pocketGenesis ? genesisScale : gbScale;
+  return emulatorScales[systemIndex(selectedSystem)];
 }
 
 // Resolve the active GBA game's full-screen override against the global setting.
@@ -883,11 +914,12 @@ bool ensureAudioHardware() {
 // Persist the core emulator and TFT settings in the Pocket Play Preferences namespace.
 void saveDeviceSettings() {
   settingsStore.putBool("sound", soundEnabled);
-  settingsStore.putUChar("gbscale", uint8_t(gbScale));
+  for (size_t i = 0; i < kSystemCount; ++i) {
+    if (const char *key = kDisplayScaleKeys[i]) settingsStore.putUChar(key, uint8_t(emulatorScales[i]));
+  }
   settingsStore.putBool("gbafull", gbaFullscreen);
   settingsStore.putBool("gbadma", gbaDmaEnabled);
   settingsStore.putUChar("frameskip", gbaFrameskipMode);
-  settingsStore.putUChar("mdscale", uint8_t(genesisScale));
   settingsStore.putUChar("mdskip", genesisFrameskipMode);
   settingsStore.putUChar("clock", tftClockOption);
 }
@@ -942,18 +974,22 @@ void loadDeviceSettings() {
       settingsStore.getUChar("lightlevel", kDefaultFlashlightBrightness), kFlashlightBrightnessStep, 100);
   const uint8_t savedSpeed = settingsStore.getUChar("lightspeed", kDefaultFlashlightSpeed);
   flashlightSpeed = savedSpeed < kFlashlightSpeedCount ? savedSpeed : kDefaultFlashlightSpeed;
-  uint8_t scale = settingsStore.getUChar("gbscale", uint8_t(Screen::GbScale::Full));
-  gbScale = static_cast<Screen::GbScale>(scale <= uint8_t(Screen::GbScale::Full) ? scale :
-                                          uint8_t(Screen::GbScale::Full));
+  // Older builds used one setting for GB, GBC, NES, Master System and Game Gear.
+  const auto full = uint8_t(Screen::GbScale::Full);
+  const uint8_t legacyScale = std::min(settingsStore.getUChar("gbscale", full), full);
+  for (size_t i = 0; i < kSystemCount; ++i) {
+    if (const char *key = kDisplayScaleKeys[i]) {
+      const uint8_t fallback = i == systemIndex(System::Genesis) ? uint8_t(Screen::GbScale::Native) : legacyScale;
+      const uint8_t scale = settingsStore.getUChar(key, fallback);
+      emulatorScales[i] = static_cast<Screen::GbScale>(scale <= full ? scale : fallback);
+    }
+  }
   gbaFullscreen = settingsStore.getBool("gbafull", false);
   gbaDmaEnabled = settingsStore.getBool("gbadma", true);
   gbaFrameskipMode = settingsStore.getUChar("frameskip", 0);
   if (gbaFrameskipMode > 3) {
     gbaFrameskipMode = 0;
   }
-  scale = settingsStore.getUChar("mdscale", uint8_t(Screen::GbScale::Native));
-  genesisScale = scale <= uint8_t(Screen::GbScale::Full)
-                     ? static_cast<Screen::GbScale>(scale) : Screen::GbScale::Native;
   genesisFrameskipMode = settingsStore.getUChar("mdskip", 0);
   if (genesisFrameskipMode > 3) genesisFrameskipMode = 0;
   tftClockOption = settingsStore.getUChar("clock", clockOptionFor(kTftClockHz));
@@ -1028,9 +1064,11 @@ bool cycleSettingsValue(SettingsItem item, int direction) {
       settingsStore.putUChar("homeStyle", uint8_t(homeStyle));
       return true;
     }
-    case SettingsItem::GbDisplay:
-      gbScale = nextDisplayScale(gbScale, direction);
+    case SettingsItem::EmulatorDisplay: {
+      auto &scale = emulatorScales[int(settingsPage) - kFirstEmulatorPage];
+      scale = nextDisplayScale(scale, direction);
       break;
+    }
     case SettingsItem::GbaDisplay:
       gbaFullscreen = !gbaFullscreen;
       break;
@@ -1039,9 +1077,6 @@ bool cycleSettingsValue(SettingsItem item, int direction) {
       break;
     case SettingsItem::GbaTransfer:
       gbaDmaEnabled = !gbaDmaEnabled;
-      break;
-    case SettingsItem::GenesisDisplay:
-      genesisScale = nextDisplayScale(genesisScale, direction);
       break;
     case SettingsItem::GenesisFrameskip:
       genesisFrameskipMode = (genesisFrameskipMode + direction + 4) % 4;
@@ -2920,6 +2955,11 @@ void openMusic() {
   stopBackgroundMusicPump();
 }
 
+constexpr int settingsEmulatorIndex(SettingsItem item) {
+  const int index = int(item) - kFirstEmulatorItem;
+  return index >= 0 && index < int(kSystemCount) ? index : -1;
+}
+
 // Map a settings row ID to its visible label.
 const char *settingsLabel(SettingsItem item) {
   switch (item) {
@@ -2929,18 +2969,24 @@ const char *settingsLabel(SettingsItem item) {
     case SettingsItem::PowerMenu: return "POWER";
     case SettingsItem::ConnectivityMenu: return "CONNECTIVITY";
     case SettingsItem::WifiMenu: return "WI-FI";
-    case SettingsItem::GenesisMenu: return "GENESIS";
+    case SettingsItem::GameBoyMenu:
+    case SettingsItem::GameBoyColorMenu:
+    case SettingsItem::GameBoyAdvanceMenu:
+    case SettingsItem::NesMenu:
+    case SettingsItem::MasterSystemMenu:
+    case SettingsItem::GameGearMenu:
+    case SettingsItem::GenesisMenu:
+      return kSystems[settingsEmulatorIndex(item)].title;
     case SettingsItem::Sound: return "GAME SOUND";
     case SettingsItem::Volume: return "VOLUME";
     case SettingsItem::Brightness: return "DISPLAY BRIGHTNESS";
     case SettingsItem::HomeStyle: return "HOME STYLE";
     case SettingsItem::Theme: return "THEME";
-    case SettingsItem::GbDisplay: return "GB / NES / SMS / GG";
-    case SettingsItem::GbaDisplay: return "GBA DISPLAY";
-    case SettingsItem::GbaFrameskip: return "GBA FRAMESKIP";
-    case SettingsItem::GbaTransfer: return "GBA TRANSFER";
-    case SettingsItem::GenesisDisplay: return "DISPLAY SIZE";
+    case SettingsItem::EmulatorDisplay:
+    case SettingsItem::GbaDisplay: return "DISPLAY SIZE";
+    case SettingsItem::GbaFrameskip:
     case SettingsItem::GenesisFrameskip: return "FRAMESKIP";
+    case SettingsItem::GbaTransfer: return "TRANSFER";
     case SettingsItem::TftClock: return "TFT SPEED";
     case SettingsItem::Sleep: return "SLEEP CONSOLE";
     case SettingsItem::AutoSleep: return "AUTO SLEEP";
@@ -2961,6 +3007,9 @@ constexpr int kSettingsSubmenuRowPitch = 23;
 constexpr int kSettingsSubmenuRowHeight = 20;
 
 uint16_t settingsAccent() {
+  if (settingsPage >= SettingsPage::GameBoy) {
+    return systemAccent(static_cast<System>(int(settingsPage) - kFirstEmulatorPage));
+  }
   return settingsReturnView == View::Paused ? systemAccent(selectedSystem) : Screen::theme.accent;
 }
 
@@ -2992,20 +3041,20 @@ void drawSettings(bool listOnSerial = true, int previousSelection = -1) {
     return;
   }
   const auto &menu = kSettingsMenus[int(settingsPage)];
-  const bool atRoot = settingsPage == SettingsPage::Root;
+  const bool compactRows = settingsPage == SettingsPage::Root || settingsPage == SettingsPage::Emulation;
   const uint16_t accent = settingsAccent();
   const bool fullRedraw = previousSelection < 0;
   if (fullRedraw) {
-    drawHeader(menu.title, atRoot ? "UP/DOWN: SELECT   A: OPEN" : "LEFT/RIGHT: CHANGE   A: SELECT",
+    drawHeader(menu.title, compactRows ? "UP/DOWN: SELECT   A: OPEN" : "LEFT/RIGHT: CHANGE   A: SELECT",
                accent);
   }
-  const int rowPitch = atRoot ? 20 : kSettingsSubmenuRowPitch;
-  const int rowHeight = atRoot ? 18 : kSettingsSubmenuRowHeight;
+  const int rowPitch = compactRows ? 20 : kSettingsSubmenuRowPitch;
+  const int rowHeight = compactRows ? 18 : kSettingsSubmenuRowHeight;
   static_assert([] {
     for (const auto &page : kSettingsMenus) {
-      const bool root = page.items == kRootSettings;
-      if (kSettingsRowsY + (page.count - 1) * (root ? 20 : kSettingsSubmenuRowPitch) +
-          (root ? 18 : kSettingsSubmenuRowHeight) > 219) return false;
+      const bool compact = page.items == kRootSettings || page.items == kEmulationSettings;
+      if (kSettingsRowsY + (page.count - 1) * (compact ? 20 : kSettingsSubmenuRowPitch) +
+          (compact ? 18 : kSettingsSubmenuRowHeight) > 219) return false;
     }
     return true;
   }());
@@ -3047,8 +3096,8 @@ void drawSettings(bool listOnSerial = true, int previousSelection = -1) {
       case SettingsItem::HomeStyle:
         snprintf(value, sizeof(value), "%s", kHomeStyleNames[unsigned(homeStyle)]);
         break;
-      case SettingsItem::GbDisplay:
-        snprintf(value, sizeof(value), "%s", gbScaleName(gbScale));
+      case SettingsItem::EmulatorDisplay:
+        snprintf(value, sizeof(value), "%s", gbScaleName(emulatorScales[int(settingsPage) - kFirstEmulatorPage]));
         break;
       case SettingsItem::GbaDisplay:
         snprintf(value, sizeof(value), "%s", gbaScaleName(gbaFullscreen));
@@ -3058,9 +3107,6 @@ void drawSettings(bool listOnSerial = true, int previousSelection = -1) {
         break;
       case SettingsItem::GbaTransfer:
         snprintf(value, sizeof(value), "%s", gbaDmaEnabled ? "DMA" : "ARDUINO SPI");
-        break;
-      case SettingsItem::GenesisDisplay:
-        snprintf(value, sizeof(value), "%s", gbScaleName(genesisScale));
         break;
       case SettingsItem::GenesisFrameskip:
         snprintf(value, sizeof(value), "%s", frameskipName(genesisFrameskipMode));
@@ -3086,6 +3132,12 @@ void drawSettings(bool listOnSerial = true, int previousSelection = -1) {
       case SettingsItem::DisplayMenu:
       case SettingsItem::SoundMenu:
       case SettingsItem::EmulationMenu:
+      case SettingsItem::GameBoyMenu:
+      case SettingsItem::GameBoyColorMenu:
+      case SettingsItem::GameBoyAdvanceMenu:
+      case SettingsItem::NesMenu:
+      case SettingsItem::MasterSystemMenu:
+      case SettingsItem::GameGearMenu:
       case SettingsItem::GenesisMenu:
       case SettingsItem::PowerMenu:
       case SettingsItem::ConnectivityMenu:
@@ -3107,7 +3159,7 @@ void drawSettings(bool listOnSerial = true, int previousSelection = -1) {
   }
   if (fullRedraw || menuStatusVisible) {
     if (!fullRedraw) clearMenuFooter();
-    const bool navigation = atRoot || settingsPage == SettingsPage::Connectivity || settingsPage == SettingsPage::Wifi;
+    const bool navigation = compactRows || settingsPage == SettingsPage::Connectivity || settingsPage == SettingsPage::Wifi;
     Screen::text(12, 224, navigation ? "B / MENU: BACK" : "B / MENU: SETTINGS   AUTO-SAVED",
                  Screen::theme.muted, Screen::theme.background);
   }
@@ -3817,7 +3869,8 @@ GameProfile readGameProfile(const String &path) {
     return {bool(values[1]), static_cast<Screen::GbScale>(values[2]), bool(values[3]),
             values[4], bool(values[5])};
   }
-  const auto scale = systemForPath(path) == int(System::Genesis) ? genesisScale : gbScale;
+  const int system = systemForPath(path);
+  const auto scale = system >= 0 ? emulatorScales[system] : Screen::GbScale::Full;
   return {false, scale, gbaFullscreen, gbaFrameskipMode, soundEnabled};
 }
 
@@ -6139,10 +6192,9 @@ void sleepConsole(bool resumeGameOnWake) {
 void backFromSettings() {
   if (settingsPage == SettingsPage::Root) {
     closeSettings();
-  } else if (settingsPage == SettingsPage::Genesis) {
+  } else if (settingsPage >= SettingsPage::GameBoy) {
+    settingsSelection = int(settingsPage) - kFirstEmulatorPage;
     settingsPage = SettingsPage::Emulation;
-    settingsSelection = std::find(std::begin(kEmulationSettings), std::end(kEmulationSettings),
-                                  SettingsItem::GenesisMenu) - std::begin(kEmulationSettings);
     drawSettings();
   } else if (settingsPage == SettingsPage::Wifi) {
     settingsPage = SettingsPage::Connectivity;
@@ -6188,8 +6240,14 @@ void handleSettings(uint16_t pressed) {
     case SettingsItem::EmulationMenu:
       if (enter) openSettingsPage(SettingsPage::Emulation);
       break;
+    case SettingsItem::GameBoyMenu:
+    case SettingsItem::GameBoyColorMenu:
+    case SettingsItem::GameBoyAdvanceMenu:
+    case SettingsItem::NesMenu:
+    case SettingsItem::MasterSystemMenu:
+    case SettingsItem::GameGearMenu:
     case SettingsItem::GenesisMenu:
-      if (enter) openSettingsPage(SettingsPage::Genesis);
+      if (enter) openSettingsPage(static_cast<SettingsPage>(kFirstEmulatorPage + settingsEmulatorIndex(item)));
       break;
     case SettingsItem::PowerMenu:
       if (enter) openSettingsPage(SettingsPage::Power);
@@ -6476,9 +6534,12 @@ void applyPauseChoice(PauseItem item, int direction, bool activate) {
         }
         currentGameProfile = updated;
       } else {
-        if (gameIsGba) gbaFullscreen = !gbaFullscreen;
-        else if (activeCartridgeCore == &pocketGenesis) genesisScale = nextDisplayScale(genesisScale, direction);
-        else gbScale = nextDisplayScale(gbScale, direction);
+        if (gameIsGba) {
+          gbaFullscreen = !gbaFullscreen;
+        } else {
+          auto &scale = emulatorScales[systemIndex(selectedSystem)];
+          scale = nextDisplayScale(scale, direction);
+        }
         saveDeviceSettings();
       }
       if (activate) resumeGame();
