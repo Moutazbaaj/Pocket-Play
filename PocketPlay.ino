@@ -10,6 +10,7 @@
 #include <SPI.h>
 #include <algorithm>
 #include <array>
+#include <string_view>
 #include <cerrno>
 #include <atomic>
 #include <driver/gpio.h>
@@ -338,7 +339,7 @@ int timingResult = -1;
 int timingStoppedAt = 0;
 unsigned timingHits = 0;
 unsigned timingAttempts = 0;
-enum class AboutSection { Overview, Device, Network, Library, Emulators, Games, Extras, Power, Developer, Build, Credits };
+enum class AboutSection { Build, Device, Network, Library, Emulators, Games, Extras, Power, Overview, Developer, Credits };
 enum class PauseItem {
   Resume, SaveState, LoadState, GbPalette, DisplaySize, Volume, Brightness, Sleep, Settings, Quit
 };
@@ -3177,74 +3178,85 @@ struct AboutPage {
 };
 
 constexpr AboutPage kAboutPages[] = {
-  {kConsoleName, {
-    "A DIY handheld for classic games.",
-    "Built with Arduino and ESP32-S3.",
-    "",
-    "Game Boy systems, NES and Sega",
-    "MP3 and WAV music from microSD",
-    "Onboard RGB flashlight",
-    ""
-  }},
-  {"Device stats", {}},
+  {"Build version", {}},
+  {"Device status", {}},
   {"Network addresses", {}},
   {"Library status", {}},
   {"Emulator cores", {
-    "GB/GBC: Gnuboy (Retro-Go port)",
-    "NES: Nofrendo 3.0 / Retro-Go 1.46",
+    "GB and GBC: Gnuboy",
     "GBA: " GPSP_NAME " " GPSP_VERSION,
-    "Master System / Game Gear: SMS Plus",
+    "NES: Nofrendo 3.0",
+    "Master System and GG: SMS Plus",
+    "Genesis and Mega Drive: mdcore",
+    "Doom engine: ESP-DOOM",
     "Open GBA BIOS from ReGBA",
-    "ReGBA snapshot: 7f37905",
-    "Source and GPL notices in repo"
   }},
   {"Games and saves", {
-    "Separate libraries for each console",
-    "FAT32 microSD and uncompressed ROMs",
+    "Libraries by system on microSD",
     "Three save state slots per game",
-    "Battery saves beside each ROM",
-    "Favorites, history and profiles",
-    "Menu opens the in-game pause screen.",
-    "Select rescans the ROM library."
+    "Cartridge saves beside each ROM",
+    "Continue from the last used slot",
+    "Favorites and recently played",
+    "Per-game display and sound",
+    "MENU: PAUSE   SELECT: RESCAN",
   }},
   {"Music and tools", {
     "MP3 and 16-bit PCM WAV playback",
-    "Folder browser and track seeking",
-    "Repeat, shuffle and background play",
-    "Sleep timer, visualizer, music RGB",
-    "Device Tools tests inputs and power",
-    "RGB flashlight with color effects",
-    "Clock, countdown and photo viewer"
+    "Repeat, shuffle and playlists",
+    "Background play and sleep timer",
+    "Photos, clock and countdown",
+    "RGB flashlight and mini games",
+    "Hardware tests and diagnostic log",
+    "Installable Lua apps on microSD",
   }},
   {"Display and power", {
-    "GB/GBC: Native, Fit or Full",
-    "GBA: Native or Full with frameskip",
-    "Selectable TFT speed and GBA DMA",
-    "Backlight: 20% to 100%",
+    "320 x 240 ILI9341 display",
+    "Per-system game display sizes",
+    "Light and dark menu themes",
+    "Adjustable TFT and backlight",
+    "Battery estimate in menus",
+    "Sleep timer in Power settings",
+    "Hold START + SELECT to wake",
+  }},
+  {kConsoleName, {
+    "An open-source DIY handheld",
+    "Built for ESP32-S3 and Arduino",
     "",
-    "Sleep and Auto Sleep in Settings",
-    "Hold Start + Select to wake."
+    "Classic games from microSD",
+    "Music, photos and a clock",
+    "Wi-Fi file transfer and updates",
+    "Bluetooth LE controller support",
   }},
   {kConsoleDeveloper, {
-    "Pocket Play software developer",
-    "Mobile apps, IoT and embedded code",
+    "Creator of Pocket Play",
+    "Firmware and handheld integration",
+    "",
+    "Mobile, IoT and embedded software",
     "",
     "GitHub profile",
-    kDeveloperGitHub
+    kDeveloperGitHub,
   }},
-  {"Build versions", {}},
   {"Project credits", {
     "Gnuboy: Laguna and Gilgamesh",
-    "gpSP: Exophase, notaz, libretro",
+    "gpSP: Exophase, notaz and libretro",
     "Retro-Go: Alex Duchesne",
-    "GBA BIOS: Normmatt and VBA/VBA-M",
-    "minimp3: lieff and contributors",
-    "Handheld reference: AshrafHanyy",
-    "Full credits and licenses in repo"
+    "mdcore: Andrew Nakas",
+    "Doom: id Software and port authors",
+    "Wiring reference: AshrafHanyy",
+    "Full notices in the repository",
   }},
 };
 constexpr int kAboutPageCount = std::size(kAboutPages);
 static_assert(kAboutPageCount == int(AboutSection::Credits) + 1);
+static_assert([] {
+  for (const auto &page : kAboutPages) {
+    if (std::string_view(page.heading).size() > 17) return false;
+    for (const char *line : page.lines) {
+      if (line && std::string_view(line).size() > 34) return false;
+    }
+  }
+  return true;
+}());
 
 // Render a line of About text and mirror it to serial.
 void drawAboutLine(int row, const char *text, int spacing = 15) {
@@ -3292,13 +3304,10 @@ void drawAboutStats(AboutSection section) {
     snprintf(lines[5], sizeof(lines[5]), "Free PSRAM: %u KiB", unsigned(ESP.getFreePsram() / 1024));
     snprintf(lines[6], sizeof(lines[6]), "TFT: %d x %d ILI9341", Screen::width, Screen::height);
   } else if (section == AboutSection::Build) {
-    snprintf(lines[0], sizeof(lines[0]), "%s %s", kConsoleName, kConsoleVersion);
-    snprintf(lines[1], sizeof(lines[1]), "Arduino-ESP32 %s", ESP_ARDUINO_VERSION_STR);
-    snprintf(lines[2], sizeof(lines[2]), "ESP-IDF %.26s", ESP.getSdkVersion());
-    snprintf(lines[3], sizeof(lines[3]), "MP3: minimp3 1428237 (CC0 1.0)");
-    snprintf(lines[4], sizeof(lines[4]), "WAV: Pocket Play PCM reader");
-    snprintf(lines[5], sizeof(lines[5]), "Build: %.28s", POCKETPLAY_BUILD_ID);
-    snprintf(lines[6], sizeof(lines[6]), "Images: stb_image 2.30 (MIT)");
+    snprintf(lines[0], sizeof(lines[0]), "Firmware: %s", kConsoleVersion);
+    snprintf(lines[1], sizeof(lines[1]), "Build ID: %.24s", POCKETPLAY_BUILD_ID);
+    snprintf(lines[2], sizeof(lines[2]), "Arduino-ESP32 %s", ESP_ARDUINO_VERSION_STR);
+    snprintf(lines[3], sizeof(lines[3]), "ESP-IDF %.26s", ESP.getSdkVersion());
   } else {
     unsigned total = 0;
     for (size_t i = 0; i < kSystemCount; ++i) {
@@ -3311,7 +3320,7 @@ void drawAboutStats(AboutSection section) {
   }
   const bool library = section == AboutSection::Library;
   for (int row = 0; row < (library ? int(std::size(lines)) : 7); ++row) {
-    drawAboutLine(row, lines[row], library ? 12 : 15);
+    if (*lines[row]) drawAboutLine(row, lines[row], library ? 12 : 15);
   }
 }
 
@@ -3344,7 +3353,7 @@ void drawAbout(bool firstOpen) {
 
   char pageNumber[8];
   snprintf(pageNumber, sizeof(pageNumber), "%d/%d", aboutSelection + 1, kAboutPageCount);
-  Screen::text(12, 224, "UP/DOWN: SCROLL   B/M: BACK", Screen::theme.muted, Screen::theme.background);
+  Screen::text(12, 224, "D-PAD: PAGES   B / MENU: BACK", Screen::theme.muted, Screen::theme.background);
   Screen::text(308 - int(strlen(pageNumber)) * 8, 224, pageNumber, Screen::theme.accent, Screen::theme.background);
 }
 
