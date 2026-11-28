@@ -95,11 +95,11 @@ Check mapping in **Settings → Device Tools → Button Test**. Physical Start a
 
 ## Bluetooth controllers
 
-Pocket Play supports one Bluetooth LE HID gamepad at a time, including Xbox Wireless Controllers with compatible BLE firmware. The radio starts disabled and reconnects to the last bonded controller when enabled. Sony DualShock and DualSense use Bluetooth Classic in wireless mode. [Pairing steps](../README-USER.md#pair-a-bluetooth-controller) · [Controller protocol reference](https://bluepad32.readthedocs.io/en/latest/supported_gamepads/)
+Pocket Play supports one Bluetooth LE HID gamepad at a time, including Xbox Wireless Controllers with compatible BLE firmware. The radio starts disabled. Scan and pair manually whenever Bluetooth starts or resumes from sleep. Sony DualShock and DualSense use Bluetooth Classic in wireless mode. [Pairing steps](../README-USER.md#pair-a-bluetooth-controller) · [Controller protocol reference](https://bluepad32.readthedocs.io/en/latest/supported_gamepads/)
 
 ### Troubleshoot Bluetooth startup
 
-At 115200 baud, check the boot log for 8 MiB PSRAM, the Bluetooth free/largest internal heap values, and `Bluetooth: startup complete`. The radio needs at least 64 KiB free internal heap and a 40 KiB largest block. If the Bluetooth menu shows **Failed**, choose **Enable on Restart** and **Restart Console** to retry without automatic reconnection to the last paired pad. Scan for the controller after startup. Hold the physical **Start + Select** buttons during reset to disable Bluetooth. If the failure happens on wake, save and quit the game before retrying. Include the startup log when reporting the issue. [Bluetooth startup code](../BluetoothControls.cpp)
+At 115200 baud, check the boot log for 8 MiB PSRAM, the Bluetooth free/largest internal heap values, and `Bluetooth: startup complete`. The radio needs at least 64 KiB free internal heap and a 40 KiB largest block. An interrupted Bluetooth startup triggers one retry on the next boot. If the retry fails, choose **Enable on Restart** and **Restart Console** to schedule another attempt. Hold the physical **Start + Select** buttons during reset to disable Bluetooth. If the failure happens on wake, save and quit the game before retrying. Include the startup log when reporting the issue. [Bluetooth startup code](../BluetoothControls.cpp)
 
 ## Bottom enclosure prototype
 
